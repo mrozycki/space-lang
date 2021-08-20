@@ -13,7 +13,7 @@ pub enum Token {
     Semicolon,
     Comma,
     Number(String),
-    Identifier(String),
+    Identifier(String, Vec<String>),
     Func,
     Let,
     Return,
@@ -193,19 +193,32 @@ impl<'a> Lexer<'a> {
 
     fn consume_naked_identifier(&mut self) -> Token {
         let mut value = String::new();
+        let mut args = Vec::new();
+
         while Self::is_naked_identifier_char(self.peek()) {
             if self.peek().is_whitespace() {
                 if let Some(keyword_token) = Self::keyword(&value) {
                     return keyword_token;
                 }
+            } else if self.peek() == '`' {
+                let mut arg = String::new();
+
+                value.push(self.advance());
+                while self.peek() != '`' {
+                    arg.push(self.advance());
+                }
+
+                value.push_str(&arg);
+                args.push(arg);
             }
+
             value.push(self.advance())
         }
 
         if let Some(keyword_token) = Self::keyword(value.trim_end()) {
             keyword_token
         } else {
-            Token::Identifier(value)
+            Token::Identifier(value, args)
         }
     }
 
@@ -216,6 +229,6 @@ impl<'a> Lexer<'a> {
             value.push(self.advance())
         }
         self.advance();
-        Token::Identifier(value)
+        Token::Identifier(value, vec![])
     }
 }
