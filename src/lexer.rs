@@ -13,6 +13,7 @@ pub enum Token {
     Semicolon,
     Comma,
     Number(String),
+    String(String),
     Identifier(String, Vec<String>),
     Func,
     Let,
@@ -150,6 +151,8 @@ impl<'a> Lexer<'a> {
         } else if self.peek() == '!' {
             self.advance();
             Ok(Token::Not)
+        } else if self.peek() == '"' {
+            Ok(self.consume_string())?
         } else if self.peek().is_digit(10) {
             Ok(self.consume_number())
         } else if self.peek().is_alphabetic() {
@@ -170,6 +173,17 @@ impl<'a> Lexer<'a> {
             value.push(self.advance());
         }
         Token::Number(value)
+    }
+
+    fn consume_string(&mut self) -> Result<Token, LexerError> {
+        let mut value = String::new();
+        self.consume('"')?;
+        while self.peek() != '"' {
+            // TODO: Add escape sequence handling
+            value.push(self.advance());
+        }
+        self.consume('"')?;
+        Ok(Token::String(value))
     }
 
     fn is_operator_char(c: char) -> bool {
@@ -391,6 +405,23 @@ mod tests {
                 Token::Identifier("Hello, world!".to_owned(), Vec::new()),
                 Token::Assign,
                 Token::Number("42".to_owned()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn string_without_escape_characters() {
+        let program = "print with new line(\"Hello, world!\");";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Identifier("print with new line".to_owned(), Vec::new()),
+                Token::LeftParen,
+                Token::String("Hello, world!".to_owned()),
+                Token::RightParen,
                 Token::Semicolon,
                 Token::Eof
             ])
