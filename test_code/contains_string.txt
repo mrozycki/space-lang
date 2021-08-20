@@ -1,0 +1,5 @@
+function contains string checks if `haystack` contains `needle` {
+    let index in haystack := 0;
+}
+
+let there's 99 bottles of beer on the wall! := 99;
