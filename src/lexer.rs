@@ -29,7 +29,7 @@ pub enum Token {
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LexerError {
     message: String,
     line: usize,
@@ -230,5 +230,198 @@ impl<'a> Lexer<'a> {
         }
         self.advance();
         Token::Identifier(value, vec![])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lex(code: &str) -> Result<Vec<Token>, LexerError> {
+        let mut lexer = Lexer::new(code);
+        let mut tokens = Vec::new();
+        loop {
+            match lexer.next()? {
+                Token::Eof => {
+                    tokens.push(Token::Eof);
+                    break;
+                }
+                token => {
+                    tokens.push(token);
+                }
+            }
+        }
+        Ok(tokens)
+    }
+
+    #[test]
+    fn a_whole_program_can_be_one_identifier() {
+        let program = "why did the chicken cross the road? to get to the 0ther side!";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Identifier(program.to_owned(), Vec::new()),
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn naked_identifier_includes_whitespace_after_it() {
+        let program = "Hello world! := 5;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Identifier("Hello world! ".to_owned(), Vec::new()),
+                Token::Assign,
+                Token::Number("5".to_owned()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn marked_identifier_can_contain_any_characters() {
+        let program = "`Hello, world! := 5 - 2 < 3` := 5;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Identifier("Hello, world! := 5 - 2 < 3".to_owned(), Vec::new()),
+                Token::Assign,
+                Token::Number("5".to_owned()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn keyword_at_the_beginning_of_naked_identifier_is_a_keyword() {
+        let program = "return hello world!;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Return,
+                Token::Identifier("hello world!".to_owned(), Vec::new()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn keyword_within_identifier_is_part_of_identifier() {
+        let program = "hello return world!;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Identifier("hello return world!".to_owned(), Vec::new()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn keyword_at_the_beginning_of_marked_identifier_is_part_of_identifier() {
+        let program = "`return hello world!`;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Identifier("return hello world!".to_owned(), Vec::new()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn naked_identifier_can_contain_embedded_marked_identifiers_as_parameters() {
+        let program = "func contains substring checks if `haystack` contains `needle` { }";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Func,
+                Token::Identifier(
+                    "contains substring checks if `haystack` contains `needle` ".to_owned(),
+                    vec!["haystack".to_owned(), "needle".to_owned()]
+                ),
+                Token::LeftBrace,
+                Token::RightBrace,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn operators_break_up_naked_identifiers() {
+        let program = "let Hello, world! := 42;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Let,
+                Token::Identifier("Hello".to_owned(), Vec::new()),
+                Token::Comma,
+                Token::Identifier("world! ".to_owned(), Vec::new()),
+                Token::Assign,
+                Token::Number("42".to_owned()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn operators_do_not_break_up_marked_identifiers() {
+        let program = "let `Hello, world!` := 42;";
+
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                Token::Let,
+                Token::Identifier("Hello, world!".to_owned(), Vec::new()),
+                Token::Assign,
+                Token::Number("42".to_owned()),
+                Token::Semicolon,
+                Token::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn malformed_operators_return_errors() {
+        let program = "let x : 2;";
+
+        assert_eq!(
+            lex(program),
+            Err(LexerError {
+                message: "Expected =".to_owned(),
+                line: 1,
+                column: 7
+            })
+        );
+    }
+
+    #[test]
+    fn lexer_reports_location_of_error() {
+        let program = "let x := 2;\nlet y := 3;\n\nlet z := 1 | 2;\n\nlet w := 7;";
+
+        assert_eq!(
+            lex(program),
+            Err(LexerError {
+                message: "Expected |".to_owned(),
+                line: 4,
+                column: 12
+            })
+        );
     }
 }
