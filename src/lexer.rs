@@ -7,6 +7,8 @@ pub enum Token {
     RightBrace,
     LeftParen,
     RightParen,
+    LeftSquare,
+    RightSquare,
     Assign,
     Semicolon,
     Comma,
@@ -18,6 +20,13 @@ pub enum Token {
     If,
     While,
     Eof,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    And,
+    Or,
+    Not,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +111,12 @@ impl<'a> Lexer<'a> {
         } else if self.peek() == ')' {
             self.advance();
             Ok(Token::RightParen)
+        } else if self.peek() == '[' {
+            self.advance();
+            Ok(Token::LeftSquare)
+        } else if self.peek() == ']' {
+            self.advance();
+            Ok(Token::RightSquare)
         } else if self.peek() == ';' {
             self.advance();
             Ok(Token::Semicolon)
@@ -112,6 +127,29 @@ impl<'a> Lexer<'a> {
         } else if self.peek() == ',' {
             self.advance();
             Ok(Token::Comma)
+        } else if self.peek() == '+' {
+            self.advance();
+            Ok(Token::Plus)
+        } else if self.peek() == '-' {
+            self.advance();
+            Ok(Token::Minus)
+        } else if self.peek() == '*' {
+            self.advance();
+            Ok(Token::Star)
+        } else if self.peek() == '/' {
+            self.advance();
+            Ok(Token::Slash)
+        } else if self.peek() == '&' {
+            self.advance();
+            self.consume('&')?;
+            Ok(Token::And)
+        } else if self.peek() == '|' {
+            self.advance();
+            self.consume('|')?;
+            Ok(Token::Or)
+        } else if self.peek() == '!' {
+            self.advance();
+            Ok(Token::Not)
         } else if self.peek().is_digit(10) {
             Ok(self.consume_number())
         } else if self.peek().is_alphabetic() {
@@ -135,7 +173,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_operator_char(c: char) -> bool {
-        c == '{' || c == '}' || c == '(' || c == ')' || c == ':' || c == ';' || c == ','
+        "{}()[]:;,+-*/&|".contains(c)
     }
 
     fn is_naked_identifier_char(c: char) -> bool {

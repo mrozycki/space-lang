@@ -1,6 +1,6 @@
 func contains string checks if `haystack` contains `needle`
 {
-    if contains string (a, b), thing does (c) {
+    if contains string (lorem ipsum, foo_bar) && thing does (x y z + `hello, world!`) {
         return a[0];
     }
 }
