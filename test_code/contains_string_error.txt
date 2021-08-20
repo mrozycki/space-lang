@@ -1,3 +1,0 @@
-func contains checks if `haystack` contains `needle` { }
-
-func contains checks: if `haystack` contains `needle` { }

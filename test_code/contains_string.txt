@@ -1,8 +1,0 @@
-func contains string checks if `haystack` contains `needle`
-{
-    if contains string (lorem ipsum, foo_bar) && thing does (x y z + `hello, world!`) {
-        return a[0];
-    }
-}
-
-let there's 99 bottles of beer on the wall! 99 bottles of beer! := 99;

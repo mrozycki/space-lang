@@ -1,0 +1,22 @@
+func collatz prints the collatz sequence starting with a given `number` and stopping at first 1 {
+    print(number);
+    print(": ");
+
+    while number != 1 {
+        print(number);
+        print(", ");
+
+        if n % 2 == 0 {
+            n = n / 2;
+        } else {
+            n = 3 * n + 1;
+        }
+    }
+
+    println("1");
+}
+
+let current value to be verified := 1;
+while 1 {
+    collatz(current)
+}

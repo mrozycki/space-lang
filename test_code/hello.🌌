@@ -1,0 +1,3 @@
+func hello 🌌 {
+    println("Hello, 🌌!");
+}
