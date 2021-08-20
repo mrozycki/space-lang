@@ -1,5 +1,8 @@
-function contains string checks if `haystack` contains `needle` {
-    let index in haystack := 0;
+func contains string checks if `haystack` contains `needle`
+{
+    if contains string (a, b), thing does (c) {
+        return a[0];
+    }
 }
 
-let there's 99 bottles of beer on the wall! := 99;
+let there's 99 bottles of beer on the wall! 99 bottles of beer! := 99;

@@ -1,10 +1,17 @@
+mod lexer;
+
 use std::{
     env, fs,
     io::{self, Read, Result},
 };
 
+use lexer::Lexer;
+
 fn process(code: &str) {
-    println!("{}", code);
+    let mut lexer = Lexer::new(code);
+    while let Some(token) = lexer.next() {
+        println!("{:?}", token);
+    }
 }
 
 fn main() -> Result<()> {
