@@ -1,13 +1,13 @@
+use core::fmt;
 use std::{iter::Peekable, str::Chars};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     LeftBrace,
     RightBrace,
     LeftParen,
     RightParen,
     Assign,
-    Colon,
     Semicolon,
     Comma,
     Number(String),
@@ -17,16 +17,46 @@ pub enum Token {
     Return,
     If,
     While,
+    Eof,
+}
+
+#[derive(Debug, Clone)]
+pub struct LexerError {
+    message: String,
+    line: usize,
+    column: usize,
+}
+
+impl fmt::Display for LexerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} in line {}, col {}",
+            self.message, self.line, self.column
+        )
+    }
 }
 
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
+    line: usize,
+    column: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Self {
         Self {
             chars: code.chars().peekable(),
+            line: 1,
+            column: 0,
+        }
+    }
+
+    fn error(&self, message: String) -> LexerError {
+        LexerError {
+            message,
+            line: self.line,
+            column: self.column,
         }
     }
 
@@ -35,48 +65,64 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self) -> char {
-        self.chars.next().unwrap_or_default()
+        let c = self.chars.next().unwrap_or_default();
+        self.column += 1;
+
+        if c == '\n' {
+            self.line += 1;
+            self.column = 0;
+        }
+
+        c
     }
 
-    pub fn next(&mut self) -> Option<Token> {
+    fn consume(&mut self, c: char) -> Result<(), LexerError> {
+        if self.peek() == c {
+            self.advance();
+            Ok(())
+        } else {
+            Err(self.error(format!("Expected {}", c)))
+        }
+    }
+
+    pub fn next(&mut self) -> Result<Token, LexerError> {
         while self.peek().is_whitespace() {
             self.advance();
         }
 
         if self.peek() == '{' {
             self.advance();
-            Some(Token::LeftBrace)
+            Ok(Token::LeftBrace)
         } else if self.peek() == '}' {
             self.advance();
-            Some(Token::RightBrace)
+            Ok(Token::RightBrace)
         } else if self.peek() == '(' {
             self.advance();
-            Some(Token::LeftParen)
+            Ok(Token::LeftParen)
         } else if self.peek() == ')' {
             self.advance();
-            Some(Token::RightParen)
+            Ok(Token::RightParen)
         } else if self.peek() == ';' {
             self.advance();
-            Some(Token::Semicolon)
+            Ok(Token::Semicolon)
         } else if self.peek() == ':' {
             self.advance();
-            if self.peek() == '=' {
-                self.advance();
-                Some(Token::Assign)
-            } else {
-                Some(Token::Colon)
-            }
+            self.consume('=')?;
+            Ok(Token::Assign)
         } else if self.peek() == ',' {
             self.advance();
-            Some(Token::Comma)
+            Ok(Token::Comma)
         } else if self.peek().is_digit(10) {
-            Some(self.consume_number())
+            Ok(self.consume_number())
         } else if self.peek().is_alphabetic() {
-            Some(self.consume_naked_identifier())
+            Ok(self.consume_naked_identifier())
         } else if self.peek() == '`' {
-            Some(self.consume_backtick_identifier())
+            Ok(self.consume_backtick_identifier())
+        } else if self.peek() == char::default() {
+            Ok(Token::Eof)
         } else {
-            None
+            let peek = self.peek();
+            Err(self.error(format!("Unexpected {}", peek)))
         }
     }
 

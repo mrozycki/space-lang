@@ -5,12 +5,25 @@ use std::{
     io::{self, Read, Result},
 };
 
-use lexer::Lexer;
+use lexer::{Lexer, Token};
 
 fn process(code: &str) {
     let mut lexer = Lexer::new(code);
-    while let Some(token) = lexer.next() {
-        println!("{:?}", token);
+    #[allow(irrefutable_let_patterns)]
+    while let result = lexer.next() {
+        match result {
+            Ok(Token::Eof) => {
+                println!("Eof");
+                break;
+            }
+            Ok(token) => {
+                println!("{:?}", token);
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                break;
+            }
+        }
     }
 }
 
