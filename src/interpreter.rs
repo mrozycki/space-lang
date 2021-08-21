@@ -401,6 +401,7 @@ impl<'b, 's> Interpreter<'b, 's> {
             .scope
             .get_fn_and_scope(function_ident)
             .map_err(|e| self.error(e))?;
+            
         let mut call_scope = func_def_scope.child_scope();
 
         let (parameters, body): (&Vec<String>, &Box<Statement>) = match func_def {
@@ -463,9 +464,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                 right,
             } => self.eval_binaryop(operator, left, right),
             Expression::UnaryOp { operator, right } => self.eval_unaryop(operator, right),
-            Expression::FunctionCall { callee, arguments } => {
-                self.eval_functioncall(callee, arguments)
-            }
+            Expression::FunctionCall { callee, arguments } => self.eval_functioncall(callee, arguments)
         }
     }
 
@@ -516,7 +515,10 @@ impl<'b, 's> Interpreter<'b, 's> {
                         loop_interpreter.line = self.line;
                         loop_interpreter.column = self.column;
 
-                        loop_interpreter.run()?;
+                        match loop_interpreter.run()? {
+                            Value::Null => (),
+                            x => return Ok(x)
+                        };
                     }
                 }
 
@@ -545,7 +547,10 @@ impl<'b, 's> Interpreter<'b, 's> {
                     if_interpreter.line = self.line;
                     if_interpreter.column = self.column;
 
-                    if_interpreter.run()?;
+                    match if_interpreter.run()? {
+                        Value::Null => (),
+                        x => return Ok(x)
+                    };
                 }
 
                 Statement::FunctionDefinition {
@@ -562,7 +567,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                 }
             }
         }
-
+        
         Ok(Value::Null)
     }
 }
