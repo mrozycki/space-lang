@@ -17,74 +17,49 @@ impl Value {
             Value::String(s) => s.clone(),
         }
     }
-}
 
-#[derive(Debug, Default)]
-pub struct Scope<'a> {
-    parent: Option<&'a mut Scope<'a>>,
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Statement>,
-    is_block_scope: bool,
-}
-
-impl<'a> Scope<'a> {
-    pub fn with_functions(functions: HashMap<String, Statement>) -> Self {
-        Self {
-            functions,
-            ..Default::default()
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Number(n) if n > &0 => true,
+            Value::String(s) if s.len() > 0 => true,
+            _ => false
         }
     }
+}
 
+#[derive(Debug, Default, Clone)]
+pub struct Scope {
+    variables: HashMap<String, Value>,
+    functions: HashMap<String, Statement>
+}
+
+impl Scope {
     /// Checks is a variable is defined in the current scope or any parent scopes
     pub fn is_var_defined(&self, ident: &String) -> bool {
-        let mut scope = self;
-        loop {
-            if scope
-                .variables
-                .keys()
-                .filter(|k| k.starts_with(ident))
-                .next()
-                != None
-            {
-                return true;
-            }
-
-            if let Some(s) = &scope.parent {
-                scope = s;
-            } else {
-                break;
-            }
-        }
-
-        false
+        self.variables
+            .keys()
+            .filter(|k| k.starts_with(ident))
+            .next()
+            != None
     }
 
     /// Gets a variable from the current scope or any parent scopes
     pub fn get_var(&self, ident: &String) -> Option<&Value> {
-        let mut scope = self;
-        loop {
-            if let Some(key) = scope
-                .variables
-                .keys()
-                .filter(|k| k.starts_with(ident))
-                .next()
-            {
-                return Some(scope.variables.get(key).unwrap());
-            }
-
-            if let Some(s) = &scope.parent {
-                scope = s;
-            } else {
-                break;
-            }
+        if let Some(key) = self
+            .variables
+            .keys()
+            .filter(|k| k.starts_with(ident))
+            .next()
+        {
+            return Some(self.variables.get(key).unwrap());
         }
 
         None
     }
 
-    /// Sets a variable in the scope it was originally defined in
-    /// Returns a boolean indicating whether the variable was defined
-    pub fn set_var(&mut self, ident: &String, val: Value) -> bool {
+    /// Sets the value of a variable
+    /// Returns an error string if the variable is not defined
+    pub fn set_var(&mut self, ident: &String, val: Value) -> Result<(), String> {
         if let Some(key) = self
             .variables
             .clone()
@@ -93,12 +68,26 @@ impl<'a> Scope<'a> {
             .next()
         {
             self.variables.insert(key.to_string(), val);
-            return true;
-        } else if self.parent.is_some() {
-            return self.parent.as_deref_mut().unwrap().set_var(ident, val);
+            return Ok(());
+        } else {
+            return Err(format!(
+                "attempt to assign to an undefined variable `{}`",
+                ident
+            ));
         }
+    }
 
-        false
+    pub fn add_functions_from_ast(&mut self, ast: &[Statement]) {
+        for stmt in ast {
+            if let Statement::FunctionDefinition {
+                name,
+                parameters: _,
+                body: _,
+            } = &stmt
+            {
+                self.functions.insert(name.to_string(), stmt.clone());
+            };
+        }
     }
 }
 
@@ -121,42 +110,34 @@ impl std::fmt::Display for InterpreterError {
 
 #[derive(Debug)]
 pub struct Interpreter<'a> {
-    scope: Scope<'a>,
-    body: Vec<Statement>,
+    scope: Scope,
+    body: &'a [Statement],
     line: usize,
     column: usize,
+    modified_variables: Vec<String>
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn with_ast(ast: Vec<Statement>) -> Self {
-        let mut functions = HashMap::new();
-        let mut body = Vec::new();
-
-        for stmt in ast {
-            if let Statement::FunctionDefinition {
-                name,
-                parameters: _,
-                body: _,
-            } = stmt.clone()
-            {
-                functions.insert(name, stmt);
-            } else {
-                body.push(stmt);
-            };
-        }
+    pub fn new(mut scope: Scope, ast: &'a [Statement]) -> Self {
+        scope.add_functions_from_ast(ast);
 
         Self {
-            scope: Scope::with_functions(functions),
-            body,
+            scope,
+            body: ast,
             line: 0,
             column: 0,
+            modified_variables: Vec::new()
         }
     }
 
-    fn get_token_type(&mut self, token: Token) -> TokenType {
+    pub fn with_ast(ast: &'a [Statement]) -> Self {
+        Self::new(Default::default(), ast)
+    }
+
+    fn get_token_type<'b>(&mut self, token: &'b Token) -> &'b TokenType {
         self.line = token.line;
         self.column = token.column;
-        token.token_type
+        &token.token_type
     }
 
     fn error(&self, message: String) -> InterpreterError {
@@ -167,18 +148,18 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn eval_literal_token(&mut self, token: Token) -> Result<Value, InterpreterError> {
+    fn eval_literal_token(&mut self, token: &Token) -> Result<Value, InterpreterError> {
         match self.get_token_type(token) {
             TokenType::Number(num_str) => {
                 let num = num_str.parse::<i64>().unwrap();
                 Ok(Value::Number(num))
             }
-            TokenType::String(s) => Ok(Value::String(s)),
+            TokenType::String(s) => Ok(Value::String(s.to_string())),
             _ => unreachable!(),
         }
     }
 
-    fn eval_variable_token(&mut self, token: Token) -> Result<Value, InterpreterError> {
+    fn eval_variable_token(&mut self, token: &Token) -> Result<Value, InterpreterError> {
         match self.get_token_type(token) {
             TokenType::Identifier(ident, args) => {
                 if args.len() != 0 {
@@ -199,8 +180,8 @@ impl<'a> Interpreter<'a> {
 
     fn eval_assignment(
         &mut self,
-        variable: Token,
-        expr: Box<Expression>,
+        variable: &Token,
+        expr: &Box<Expression>,
     ) -> Result<Value, InterpreterError> {
         match self.get_token_type(variable) {
             TokenType::Identifier(ident, args) => {
@@ -210,21 +191,19 @@ impl<'a> Interpreter<'a> {
                     ));
                 }
 
-                let val = self.eval(*expr)?;
-                if self.scope.set_var(&ident, val.clone()) {
-                    Ok(val)
-                } else {
-                    Err(self.error(format!(
-                        "attempt to assign to undefined variable `{}`",
-                        ident
-                    )))
-                }
+                let val = self.eval(expr)?;
+                self.scope
+                    .set_var(&ident, val.clone())
+                    .map_err(|e| self.error(e))?;
+
+                self.modified_variables.push(ident.to_string());
+                return Ok(val);
             }
             _ => unreachable!(),
         }
     }
 
-    fn eval(&mut self, expr: Expression) -> Result<Value, InterpreterError> {
+    fn eval(&mut self, expr: &Expression) -> Result<Value, InterpreterError> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
             Expression::Variable { name } => self.eval_variable_token(name),
@@ -234,20 +213,22 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn run(&mut self) -> Result<(), InterpreterError> {
-        for stmt in self.body.clone() {
+        for stmt in self.body {
             match stmt {
                 Statement::Expression { expr } => {
-                    self.eval(expr)?;
+                    self.eval(&expr)?;
                 }
+
                 Statement::Print { expr, newline } => {
-                    let mut str = self.eval(expr)?.to_string();
-                    if newline {
+                    let mut str = self.eval(&expr)?.to_string();
+                    if *newline {
                         str.push('\n')
                     }
                     print!("{}", str);
                 }
+
                 Statement::Definition { variable, value } => {
-                    if let TokenType::Identifier(ident, args) = self.get_token_type(variable) {
+                    if let TokenType::Identifier(ident, args) = self.get_token_type(&variable) {
                         if args.len() != 0 {
                             return Err(self.error(
                                 "variable identifiers cannot contain backtick arguments".to_owned(),
@@ -261,9 +242,33 @@ impl<'a> Interpreter<'a> {
                             )));
                         }
 
-                        let val = self.eval(value)?.clone();
-                        self.scope.variables.insert(ident, val);
+                        let val = self.eval(&value)?.clone();
+                        self.scope.variables.insert(ident.to_string(), val);
                     }
+                }
+
+                Statement::Loop { condition, body } => {
+                    let loop_ast = match body.as_ref() {
+                        Statement::Block { statements } => statements,
+                        _ => unreachable!(),
+                    };
+
+                    let mut loop_scope = self.scope.clone();
+                    loop_scope.add_functions_from_ast(&loop_ast);
+                    
+
+                    while self.eval(&condition)?.is_truthy() {
+                        let mut loop_interpreter = Interpreter::new(loop_scope.clone(), &loop_ast);
+                        loop_interpreter.run()?;
+                        
+                        for key in loop_interpreter.modified_variables {
+                            match loop_interpreter.scope.variables.get(&key) {
+                                Some(v) => loop_scope.variables.insert(key, v.clone()),
+                                None => unreachable!()
+                            };
+                        }
+                    }
+
                 }
                 _ => todo!(),
             }

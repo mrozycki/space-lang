@@ -19,7 +19,7 @@ fn process(code: &str) {
             let parser = Parser::new(tokens);
             match parser.parse() {
                 Ok(expression) => {
-                    let mut interpreter = Interpreter::with_ast(expression);
+                    let mut interpreter = Interpreter::with_ast(&expression);
                     match interpreter.run() {
                         Err(e) => eprintln!("Interpreter error: {}", e),
                         _ => ()
