@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::ast::Expression;
+use crate::ast::{Expression, Statement};
 use crate::lexer::{Token, TokenType};
 
 struct TokenIterator {
@@ -13,17 +13,15 @@ impl TokenIterator {
         Self { tokens, index: 0 }
     }
 
+    fn is_at_end(&self) -> bool {
+        self.peek()
+            .map(|t| t.token_type == TokenType::Eof)
+            .unwrap_or(true)
+    }
+
     fn peek(&self) -> Option<&Token> {
         if self.index < self.tokens.len() {
             Some(&self.tokens[self.index])
-        } else {
-            None
-        }
-    }
-
-    fn previous(&self) -> Option<&Token> {
-        if self.index > 0 {
-            Some(&self.tokens[self.index - 1])
         } else {
             None
         }
@@ -90,10 +88,6 @@ impl Parser {
         }
     }
 
-    pub fn parse(mut self) -> Result<Expression, ParserError> {
-        self.expression()
-    }
-
     fn error(&self, message: &'static str) -> ParserError {
         ParserError {
             message,
@@ -101,8 +95,95 @@ impl Parser {
         }
     }
 
+    pub fn parse(mut self) -> Result<Vec<Statement>, ParserError> {
+        let mut statements = Vec::new();
+        while !self.tokens.is_at_end() {
+            statements.push(self.statement()?);
+        }
+        Ok(statements)
+    }
+
+    pub fn statement(&mut self) -> Result<Statement, ParserError> {
+        match self.tokens.peek().map(|t| &t.token_type) {
+            Some(TokenType::Identifier(name, _))
+                if name.trim_end() == "print" || name.trim_end() == "println" =>
+            {
+                let newline = name.trim_end() == "println";
+                self.tokens.next();
+                self.print_statement(newline)
+            }
+            Some(TokenType::Let) => {
+                self.tokens.next();
+                self.definition_statement()
+            }
+            Some(_) => self.expression_statement(),
+            None => Err(self.error("Expected a statement")),
+        }
+    }
+
+    pub fn print_statement(&mut self, newline: bool) -> Result<Statement, ParserError> {
+        let expression = self.expression()?;
+        if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
+            Ok(Statement::Print {
+                expr: expression,
+                newline,
+            })
+        } else {
+            Err(self.error("Expected ';' at the end of print statement"))
+        }
+    }
+
+    pub fn expression_statement(&mut self) -> Result<Statement, ParserError> {
+        let expression = self.expression()?;
+        if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
+            Ok(Statement::Expression { expr: expression })
+        } else {
+            Err(self.error("Expected ';' at the end of expression statement"))
+        }
+    }
+
+    pub fn definition_statement(&mut self) -> Result<Statement, ParserError> {
+        let name = self
+            .tokens
+            .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
+            .ok_or(self.error("Expected identifier after 'let' keyword"))?;
+
+        self.tokens
+            .consume(vec![TokenType::Assign])
+            .ok_or(self.error("Expected ':=' after variable name in definition"))?;
+
+        let initializer = self.expression()?;
+
+        self.tokens
+            .consume(vec![TokenType::Semicolon])
+            .ok_or(self.error("Expected ';' at the end of a variable definition"))?;
+
+        Ok(Statement::Definition {
+            variable: name,
+            value: initializer,
+        })
+    }
+
     fn expression(&mut self) -> Result<Expression, ParserError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expression, ParserError> {
+        let lvalue = self.equality()?;
+
+        if let Some(..) = self.tokens.consume(vec![TokenType::Assign]) {
+            if let Expression::Variable { name } = lvalue {
+                let rvalue = self.equality()?;
+                Ok(Expression::Assignment {
+                    variable: name,
+                    value: Box::new(rvalue),
+                })
+            } else {
+                Err(self.error("Invalid lvalue: expected a variable name"))
+            }
+        } else {
+            Ok(lvalue)
+        }
     }
 
     fn equality(&mut self) -> Result<Expression, ParserError> {

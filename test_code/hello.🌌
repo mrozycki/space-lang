@@ -1,3 +1,4 @@
 func hello 🌌 {
+    `this is an identifier, but it is not used, so it acts like a comment`;
     println("Hello, 🌌!");
 }

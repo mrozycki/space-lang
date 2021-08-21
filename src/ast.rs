@@ -18,6 +18,10 @@ pub enum Expression {
     Variable {
         name: Token,
     },
+    Assignment {
+        variable: Token,
+        value: Box<Expression>,
+    },
     FunctionCall {
         function_name: Token,
         arguments: Vec<Box<Expression>>,
@@ -25,6 +29,7 @@ pub enum Expression {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub enum Statement {
     Expression {
         expr: Expression,
@@ -34,12 +39,9 @@ pub enum Statement {
     },
     Print {
         expr: Expression,
+        newline: bool,
     },
     Definition {
-        variable: Token,
-        value: Expression,
-    },
-    Assignment {
         variable: Token,
         value: Expression,
     },
