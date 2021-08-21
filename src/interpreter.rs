@@ -2,7 +2,8 @@ use crate::{
     ast::{Expression, Statement},
     lexer::{Token, TokenType},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use qp_trie::{Trie, wrapper::BString};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
@@ -114,61 +115,58 @@ impl Value {
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Statement>,
+    variables: Trie<BString, Value>,
+    functions: Trie<BString, Statement>,
 }
 
 impl Scope {
     /// Checks is a variable is defined in the current scope or any parent scopes
-    pub fn is_var_defined(&self, ident: &String) -> bool {
+    pub fn is_var_defined(&self, ident: &str) -> bool {
         self.variables
-            .keys()
-            .filter(|k| k.starts_with(ident))
+            .iter_prefix_str(ident)
             .next()
-            != None
+            .is_some()
     }
 
     /// Gets a variable from the current scope or any parent scopes
-    pub fn get_var(&self, ident: &String) -> Result<Option<&Value>, String> {
-        let matches = self
-            .variables
-            .keys()
-            .filter(|k| k.starts_with(ident))
-            .collect::<Vec<&String>>();
+    pub fn get_var(&self, ident: &str) -> Result<Option<&Value>, String> {
+        let mut matches = self.variables.iter_prefix_str(ident);
+        let var = match matches.next() {
+            Some(v) => v,
+            None => return Ok(None),
+        };
 
-        if matches.len() == 0 {
-            Ok(None)
-        } else if matches.len() > 1 {
+        if matches.next().is_some() {
             Err(format!(
                 "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
                 ident
             ))
         } else {
-            Ok(Some(self.variables.get(matches[0]).unwrap()))
+            Ok(Some(var.1))
         }
     }
 
     /// Sets the value of a variable
     /// Returns an error string if the variable is not defined
-    pub fn set_var(&mut self, ident: &String, val: Value) -> Result<(), String> {
-        let vars = self.variables.clone();
-        let matches = vars
-            .keys()
-            .filter(|k| k.starts_with(ident))
-            .collect::<Vec<&String>>();
+    pub fn set_var(&mut self, ident: &str, val: Value) -> Result<(), String> {
+        let mut matches = self.variables.iter_prefix_mut_str(ident);
+        let var = match matches.next() {
+            Some(v) => v,
+            None => {
+                return Err(format!(
+                    "attempt to assign to an undefined variable `{}`",
+                    ident
+                ));
+            },
+        };
 
-        if matches.len() == 0 {
-            Err(format!(
-                "attempt to assign to an undefined variable `{}`",
-                ident
-            ))
-        } else if matches.len() > 1 {
+        if matches.next().is_some() {
             Err(format!(
                 "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
                 ident
             ))
         } else {
-            self.variables.insert(matches[0].to_string(), val);
+            *var.1 = val;
             Ok(())
         }
     }
@@ -181,7 +179,7 @@ impl Scope {
                 body: _,
             } = &stmt
             {
-                self.functions.insert(name.to_string(), stmt.clone());
+                self.functions.insert_str(name, stmt.clone());
             };
         }
     }
@@ -384,7 +382,7 @@ impl<'a> Interpreter<'a> {
                         }
 
                         let val = self.eval(&value, false)?.clone();
-                        self.scope.variables.insert(ident.to_string(), val);
+                        self.scope.variables.insert_str(ident, val);
                     }
                 }
 

@@ -5,3 +5,36 @@ version = 3
 [[package]]
 name = "langjam"
 version = "0.1.0"
+dependencies = [
+ "qp-trie",
+]
+
+[[package]]
+name = "new_debug_unreachable"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
+
+[[package]]
+name = "qp-trie"
+version = "0.7.6"
+source = "git+https://github.com/sdleffler/qp-trie-rs#a60eddd48d2cf8d1aff7eb019fd1a576c1d7e709"
+dependencies = [
+ "new_debug_unreachable",
+ "unreachable",
+]
+
+[[package]]
+name = "unreachable"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "382810877fe448991dfc7f0dd6e3ae5d58088fd0ea5e35189655f84e6814fa56"
+dependencies = [
+ "void",
+]
+
+[[package]]
+name = "void"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
