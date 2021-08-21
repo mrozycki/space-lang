@@ -6,7 +6,7 @@ use crate::{
 use gc::{Finalize, Gc, GcCell, Trace};
 use joinery::JoinableIterator;
 use qp_trie::{wrapper::BString, Trie};
-use std::cell::RefCell;
+use std::{cell::RefCell, convert::TryInto};
 use std::fmt;
 
 #[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
@@ -130,6 +130,13 @@ impl Value {
         } else {
             Err("operand for unary operator must be a number".to_string())
         }
+    }
+
+    pub fn pow(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        let b: u32 = b.try_into().or(Err("in pow(): power must be nonnegative and within u32::MAX".to_string()))?;
+
+        Ok(Value::Number(a.pow(b)))
     }
 }
 
@@ -422,7 +429,7 @@ impl<'b, 's> Interpreter<'b, 's> {
             } => (parameters, body),
 
             Statement::CallBuiltin { function } => {
-                return function(evaluated_args);
+                return function(evaluated_args).map_err(|e| self.error(e));
             },
             _ => unreachable!(),
         };

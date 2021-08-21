@@ -1,9 +1,0 @@
-func factorial of `n` {
-    if n < 2 {
-        return n;
-    } else {
-        return n * factorial of (n - 1);
-    }
-}
-
-println(factorial of (5));
