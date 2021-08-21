@@ -17,7 +17,7 @@ pub fn builtins() -> Trie<BString, Statement> {
 
 fn pow(args: Vec<Value>) -> Result<Value, String> {
     if args.len() != 2 {
-        Err(format!("pow() requires exactly 2 arguments, got {}", args.len()))
+        Err(format!("builtin `pow` requires exactly 2 arguments, got {}", args.len()))
     } else {
         args[0].pow(args[1].clone())
     }
@@ -25,6 +25,6 @@ fn pow(args: Vec<Value>) -> Result<Value, String> {
 
 fn read_line(_args: Vec<Value>) -> Result<Value, String> {
     let mut buf = String::new();
-    std::io::stdin().read_line(&mut buf).map_err(|e| format!("in stdin(): IO Error: {}", e))?;
+    std::io::stdin().read_line(&mut buf).map_err(|e| format!("in builtin `read line`: IO Error: {}", e))?;
     Ok(Value::String(buf))
 }
