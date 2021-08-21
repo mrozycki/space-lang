@@ -1,21 +1,19 @@
 func is prime checks whether a given `number` is prime {
-    if number < 2 {
-        return 0;
-    } 
-
+    let divisor count := 0;
     let i the potential divisor := 2;
+
     while i * i <= number {
         if number % i == 0 {
-            return 0;
+            divisor count := d + 1;
         }
-        number := number + 1;
+        i := i + 1;
     }
 
-    return 1;
+    return number >= 2 && divisor count == 0;
 }
 
 let k the potential prime := 2;
-while 1 {
+while k < 100 {
     if is prime (k) {
         println(k);
     }

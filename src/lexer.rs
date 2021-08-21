@@ -223,10 +223,10 @@ impl<'a> Lexer<'a> {
             Ok(self.consume_string()?)
         } else if self.peek().is_digit(10) {
             Ok(self.consume_number()?)
-        } else if self.peek().is_alphabetic() {
-            Ok(self.consume_naked_identifier())
         } else if self.peek() == '`' {
             Ok(self.consume_backtick_identifier())
+        } else if Self::is_naked_identifier_char(self.peek()) {
+            Ok(self.consume_naked_identifier())
         } else if self.peek() == char::default() {
             Ok(self.emit(TokenType::Eof))
         } else {

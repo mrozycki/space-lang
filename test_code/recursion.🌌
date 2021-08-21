@@ -3,8 +3,12 @@ func sum numbers from 1 to `n` {
     return n + sum numbers from 1 to (n - 1);
 }
 
+println(sum numbers from 1 to (10));
+
 func count down from `n` to 1 {
     if n < 1 { return; }
     println(n);
     count down from (n - 1);
 }
+
+count down from (10);

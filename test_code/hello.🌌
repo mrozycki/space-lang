@@ -1,8 +1,8 @@
 func hello `🌌` {
     `this is an identifier, but it is not used, so it acts like a comment`;
     print("Hello, ");
-    print(`🌌`);
+    print(🌌);
     println("!");
 }
 
-hello("world", 4, 8, 15, 16, 23, 42);
+hello("world");
