@@ -257,8 +257,8 @@ impl<'b, 's> Interpreter<'b, 's> {
                     ));
                 }
 
-                let v: RefCell<Value> = self.scope.var(&ident).map_err(|e| self.error(e))?.clone();
-                Ok(v.into_inner())
+                let v = self.scope.var(&ident).map_err(|e| self.error(e))?;
+                Ok(v.borrow().clone())
             }
             _ => unreachable!(),
         }
