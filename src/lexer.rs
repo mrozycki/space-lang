@@ -28,6 +28,12 @@ pub enum Token {
     And,
     Or,
     Not,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -150,7 +156,32 @@ impl<'a> Lexer<'a> {
             Ok(Token::Or)
         } else if self.peek() == '!' {
             self.advance();
-            Ok(Token::Not)
+            if self.peek() == '=' {
+                self.advance();
+                Ok(Token::NotEqual)
+            } else {
+                Ok(Token::Not)
+            }
+        } else if self.peek() == '=' {
+            self.advance();
+            self.consume('=')?;
+            Ok(Token::Equal)
+        } else if self.peek() == '<' {
+            self.advance();
+            if self.peek() == '=' {
+                self.advance();
+                Ok(Token::LessThanOrEqual)
+            } else {
+                Ok(Token::LessThan)
+            }
+        } else if self.peek() == '>' {
+            self.advance();
+            if self.peek() == '=' {
+                self.advance();
+                Ok(Token::GreaterThanOrEqual)
+            } else {
+                Ok(Token::GreaterThan)
+            }
         } else if self.peek() == '"' {
             Ok(self.consume_string()?)
         } else if self.peek().is_digit(10) {
