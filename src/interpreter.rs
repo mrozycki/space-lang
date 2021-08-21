@@ -378,18 +378,21 @@ impl<'a> Interpreter<'a> {
                             .extend(loop_interpreter.modified_variables.clone());
 
                         for key in &loop_interpreter.modified_variables {
+                            if !self
+                                .scope
+                                .get_var(key)
+                                .map_err(|e| self.error(e))?
+                                .is_some()
+                            {
+                                continue;
+                            }
+
                             match loop_interpreter
                                 .scope
                                 .get_var(key)
                                 .map_err(|e| self.error(e))?
                             {
-                                Some(v)
-                                    if self
-                                        .scope
-                                        .get_var(key)
-                                        .map_err(|e| self.error(e))?
-                                        .is_some() =>
-                                {
+                                Some(v) => {
                                     loop_scope
                                         .set_var(key, v.clone())
                                         .map_err(|e| self.error(e))?;
@@ -397,7 +400,6 @@ impl<'a> Interpreter<'a> {
                                         .set_var(key, v.clone())
                                         .map_err(|e| self.error(e))?;
                                 }
-                                Some(_) => continue,
                                 None => unreachable!(),
                             };
                         }
@@ -433,23 +435,24 @@ impl<'a> Interpreter<'a> {
                     if_interpreter.run()?;
 
                     for key in &if_interpreter.modified_variables {
+                        if !self
+                            .scope
+                            .get_var(key)
+                            .map_err(|e| self.error(e))?
+                            .is_some()
+                        {
+                            continue;
+                        }
+
                         match if_interpreter
                             .scope
                             .get_var(key)
                             .map_err(|e| self.error(e))?
                         {
-                            Some(v)
-                                if self
-                                    .scope
-                                    .get_var(key)
-                                    .map_err(|e| self.error(e))?
-                                    .is_some() =>
-                            {
-                                self.scope
-                                    .set_var(key, v.clone())
-                                    .map_err(|e| self.error(e))?
-                            }
-                            Some(_) => continue,
+                            Some(v) => self
+                                .scope
+                                .set_var(key, v.clone())
+                                .map_err(|e| self.error(e))?,
                             None => unreachable!(),
                         };
                     }
