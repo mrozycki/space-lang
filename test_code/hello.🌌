@@ -5,4 +5,4 @@ func hello `🌌` {
     println("!");
 }
 
-hello("world", 4, 8, 15, 16, 23, 42);
+hello("world");
