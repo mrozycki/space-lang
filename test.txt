@@ -1,24 +1,7 @@
-let number to check := 13;
-
-let prime check := 1;
-
-if number < 2 {
-    prime := 0;
-} else {
-    let i the potential divisor := 2;
-    while i <= number / 2 {
-        if number % i == 0 {
-            prime := 0;
-        }
-        
-        i := i + 1;
-    }
-}
-
-if prime {
-    print (number);
-    println (" is prime");
-} else {
-    print (number);
-    println (" is not prime");
-}
+let my array := [1, 2, "hi"];
+println (my arr);
+println ([
+    1,
+    2,
+    "commas at end are ok",
+]);

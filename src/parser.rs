@@ -419,7 +419,7 @@ impl Parser {
         {
             self.tokens.next();
             let mut arguments = Vec::new();
-            loop {
+            while self.tokens.peek().map_or(false, |tok| tok.token_type != TokenType::RightParen) {
                 arguments.push(self.expression()?);
                 if let None = self.tokens.consume(vec![TokenType::Comma]) {
                     break;
@@ -454,6 +454,18 @@ impl Parser {
             } else {
                 Err(self.error("Expected ')' after expression"))
             }
+        } else if let Some(_) = self.tokens.consume(vec![TokenType::LeftSquare]) {
+            let mut elements = Vec::new();
+            while self.tokens.peek().map_or(false, |tok| tok.token_type != TokenType::RightSquare) {
+                elements.push(self.expression()?);
+                if let None = self.tokens.consume(vec![TokenType::Comma]) {
+                    break;
+                }
+            }
+            self.tokens
+                .consume(vec![TokenType::RightSquare])
+                .ok_or(self.error("Expected ')' at the end of the parameter list"))?;
+            Ok(Expression::ArrayLiteral { elements })
         } else {
             Err(self.error("Expected a primary value"))
         }
