@@ -1,24 +1,31 @@
+use std::fmt;
 use std::cell::RefCell;
 use crate::{
     ast::{Expression, Statement},
     lexer::{Token, TokenType},
 };
 use qp_trie::{Trie, wrapper::BString};
+use gc::{Gc, GcCell, Trace, Finalize};
+use joinery::JoinableIterator;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
 pub enum Value {
     Number(i64),
     String(String),
+    Array(Gc<GcCell<Vec<Value>>>),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => f.write_str(s),
+            Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
+        }
+    }
 }
 
 impl Value {
-    pub fn to_string(&self) -> String {
-        match self {
-            Value::Number(n) => format!("{}", n),
-            Value::String(s) => s.clone(),
-        }
-    }
-
     pub fn is_truthy(&self) -> bool {
         match self {
             Value::Number(n) if *n > 0 => true,
