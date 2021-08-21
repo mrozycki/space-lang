@@ -116,6 +116,8 @@ impl Parser {
             Some(TokenType::If) => self.conditional_statement(),
             Some(TokenType::While) => self.loop_statement(),
             Some(TokenType::LeftParen) => self.block(),
+            Some(TokenType::Func) => self.function_definition(),
+            Some(TokenType::Return) => self.return_statement(),
             Some(_) => self.expression_statement(),
             None => Err(self.error("Expected a statement")),
         }
@@ -231,6 +233,47 @@ impl Parser {
         Ok(Statement::Block { statements })
     }
 
+    pub fn function_definition(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::Func])
+            .ok_or(self.error("Expected 'func' keyword at the start of function definition"))?;
+
+        if let Some(Token {
+            token_type: TokenType::Identifier(name, parameters),
+            ..
+        }) = self.tokens.next()
+        {
+            let body = Box::new(self.block()?);
+            Ok(Statement::FunctionDefinition {
+                name,
+                parameters,
+                body,
+            })
+        } else {
+            Err(self.error("Expected an function signature after `func` keyword"))
+        }
+    }
+
+    pub fn return_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::Return])
+            .ok_or(self.error("Expected 'return'"))?;
+
+        if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
+            Ok(Statement::Return { expression: None })
+        } else {
+            let expression = self.expression()?;
+
+            self.tokens
+                .consume(vec![TokenType::Semicolon])
+                .ok_or(self.error("Expected ';' at the end of return statement"))?;
+
+            Ok(Statement::Return {
+                expression: Some(expression),
+            })
+        }
+    }
+
     fn expression(&mut self) -> Result<Expression, ParserError> {
         self.assignment()
     }
@@ -328,7 +371,36 @@ impl Parser {
                 operator,
             })
         } else {
-            self.primary()
+            self.call()
+        }
+    }
+
+    fn call(&mut self) -> Result<Expression, ParserError> {
+        let expression = self.primary()?;
+
+        if self
+            .tokens
+            .peek()
+            .map(|t| t.token_type == TokenType::LeftParen)
+            .unwrap_or(false)
+        {
+            self.tokens.next();
+            let mut arguments = Vec::new();
+            loop {
+                arguments.push(self.expression()?);
+                if let None = self.tokens.consume(vec![TokenType::Comma]) {
+                    break;
+                }
+            }
+            self.tokens
+                .consume(vec![TokenType::RightParen])
+                .ok_or(self.error("Expected ')' at the end of the parameter list"))?;
+            Ok(Expression::FunctionCall {
+                callee: Box::new(expression),
+                arguments,
+            })
+        } else {
+            Ok(expression)
         }
     }
 

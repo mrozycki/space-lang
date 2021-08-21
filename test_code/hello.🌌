@@ -1,4 +1,8 @@
-func hello 🌌 {
+func hello `🌌` {
     `this is an identifier, but it is not used, so it acts like a comment`;
-    println("Hello, 🌌!");
+    print("Hello, ");
+    print(`🌌`);
+    println("!");
 }
+
+hello("world", 4, 8, 15, 16, 23, 42);

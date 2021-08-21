@@ -22,8 +22,8 @@ pub enum Expression {
         value: Box<Expression>,
     },
     FunctionCall {
-        function_name: Token,
-        arguments: Vec<Box<Expression>>,
+        callee: Box<Expression>,
+        arguments: Vec<Expression>,
     },
 }
 
@@ -53,10 +53,11 @@ pub enum Statement {
         body: Box<Statement>,
     },
     FunctionDefinition {
-        parameters: Vec<Token>,
+        name: String,
+        parameters: Vec<String>,
         body: Box<Statement>,
     },
     Return {
-        expression: Expression,
+        expression: Option<Expression>,
     },
 }
