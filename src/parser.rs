@@ -400,7 +400,7 @@ impl Parser {
     fn unary(&mut self) -> Result<Expression, ParserError> {
         if let Some(operator) = self.tokens.consume(vec![TokenType::Minus, TokenType::Not]) {
             Ok(Expression::UnaryOp {
-                right: Box::new(self.primary()?),
+                right: Box::new(self.call()?),
                 operator,
             })
         } else {
