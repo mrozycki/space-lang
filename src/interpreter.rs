@@ -2,9 +2,9 @@ use crate::{
     ast::{Expression, Statement},
     lexer::{Token, TokenType},
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Number(i64),
     String(String),
@@ -24,6 +24,10 @@ impl Value {
             Value::String(s) if s.len() > 0 => true,
             _ => false
         }
+    }
+
+    pub fn not_equal(&self, rhs: Value) -> Value {
+        Value::Number((self != &rhs).into())
     }
 }
 
@@ -114,7 +118,7 @@ pub struct Interpreter<'a> {
     body: &'a [Statement],
     line: usize,
     column: usize,
-    modified_variables: Vec<String>
+    modified_variables: HashSet<String>
 }
 
 impl<'a> Interpreter<'a> {
@@ -126,7 +130,7 @@ impl<'a> Interpreter<'a> {
             body: ast,
             line: 0,
             column: 0,
-            modified_variables: Vec::new()
+            modified_variables: HashSet::new()
         }
     }
 
@@ -196,10 +200,33 @@ impl<'a> Interpreter<'a> {
                     .set_var(&ident, val.clone())
                     .map_err(|e| self.error(e))?;
 
-                self.modified_variables.push(ident.to_string());
+                self.modified_variables.insert(ident.to_string());
                 return Ok(val);
             }
             _ => unreachable!(),
+        }
+    }
+
+    fn eval_binaryop(&mut self, operator: &Token, left: &Box<Expression>, right: &Box<Expression>) -> Result<Value, InterpreterError> {
+        let left_val = self.eval(left)?;
+        let right_val = self.eval(right)?;
+
+        match self.get_token_type(operator) {
+            TokenType::Plus => todo!(),
+            TokenType::Minus => todo!(),
+            TokenType::Star => todo!(),
+            TokenType::Slash => todo!(),
+            TokenType::Modulo => todo!(),
+            TokenType::And => todo!(),
+            TokenType::Or => todo!(),
+            TokenType::Not => todo!(),
+            TokenType::Equal => todo!(),
+            TokenType::NotEqual => Ok(left_val.not_equal(right_val)),
+            TokenType::LessThan => todo!(),
+            TokenType::LessThanOrEqual => todo!(),
+            TokenType::GreaterThan => todo!(),
+            TokenType::GreaterThanOrEqual => todo!(),
+            _ => unreachable!()
         }
     }
 
@@ -208,6 +235,7 @@ impl<'a> Interpreter<'a> {
             Expression::Literal { value } => self.eval_literal_token(value),
             Expression::Variable { name } => self.eval_variable_token(name),
             Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
+            Expression::BinaryOp { operator, left, right } => self.eval_binaryop(operator, left, right),
             _ => todo!(),
         }
     }
@@ -255,15 +283,17 @@ impl<'a> Interpreter<'a> {
 
                     let mut loop_scope = self.scope.clone();
                     loop_scope.add_functions_from_ast(&loop_ast);
-                    
 
                     while self.eval(&condition)?.is_truthy() {
                         let mut loop_interpreter = Interpreter::new(loop_scope.clone(), &loop_ast);
                         loop_interpreter.run()?;
                         
-                        for key in loop_interpreter.modified_variables {
-                            match loop_interpreter.scope.variables.get(&key) {
-                                Some(v) => loop_scope.variables.insert(key, v.clone()),
+                        for key in &loop_interpreter.modified_variables {
+                            match loop_interpreter.scope.variables.get(key) {
+                                Some(v) => {
+                                    loop_scope.variables.insert(key.to_string(), v.clone());
+                                    self.scope.variables.insert(key.to_string(), v.clone());
+                                },
                                 None => unreachable!()
                             };
                         }
