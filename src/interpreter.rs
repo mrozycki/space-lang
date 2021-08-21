@@ -28,9 +28,9 @@ impl fmt::Display for Value {
 impl Value {
     pub fn is_truthy(&self) -> bool {
         match self {
-            Value::Number(n) if *n > 0 => true,
-            Value::String(s) if s.len() > 0 => true,
-            _ => false,
+            Value::Number(n) => *n > 0,
+            Value::String(s) => s.len() > 0,
+            Value::Array(a) => a.borrow().len() > 0,
         }
     }
 
