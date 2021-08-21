@@ -152,9 +152,9 @@ impl<'a> Lexer<'a> {
             self.advance();
             Ok(Token::Not)
         } else if self.peek() == '"' {
-            Ok(self.consume_string())?
+            Ok(self.consume_string()?)
         } else if self.peek().is_digit(10) {
-            Ok(self.consume_number())
+            Ok(self.consume_number()?)
         } else if self.peek().is_alphabetic() {
             Ok(self.consume_naked_identifier())
         } else if self.peek() == '`' {
@@ -167,12 +167,23 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn consume_number(&mut self) -> Token {
+    fn consume_number(&mut self) -> Result<Token, LexerError> {
         let mut value = String::new();
         while self.peek().is_digit(10) {
             value.push(self.advance());
         }
-        Token::Number(value)
+
+        if self.peek() == '.' {
+            self.advance();
+            if !self.peek().is_digit(10) {
+                return Err(self.error("Expected digit".to_owned()));
+            }
+            value.push('.');
+            while self.peek().is_digit(10) {
+                value.push(self.advance());
+            }
+        }
+        Ok(Token::Number(value))
     }
 
     fn consume_string(&mut self) -> Result<Token, LexerError> {
