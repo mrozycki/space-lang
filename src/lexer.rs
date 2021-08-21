@@ -329,7 +329,7 @@ impl<'a> Lexer<'a> {
         if let Some(keyword_token) = self.keyword(value.trim_end()) {
             keyword_token
         } else {
-            self.emit(TokenType::Identifier(value, args))
+            self.emit(TokenType::Identifier(value.trim_end().to_string(), args))
         }
     }
 

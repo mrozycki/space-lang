@@ -22,7 +22,7 @@ impl Value {
         match self {
             Value::Number(n) if *n > 0 => true,
             Value::String(s) if s.len() > 0 => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -97,7 +97,7 @@ impl Value {
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
     variables: HashMap<String, Value>,
-    functions: HashMap<String, Statement>
+    functions: HashMap<String, Statement>,
 }
 
 impl Scope {
@@ -111,36 +111,47 @@ impl Scope {
     }
 
     /// Gets a variable from the current scope or any parent scopes
-    pub fn get_var(&self, ident: &String) -> Option<&Value> {
-        if let Some(key) = self
+    pub fn get_var(&self, ident: &String) -> Result<Option<&Value>, String> {
+        let matches = self
             .variables
             .keys()
             .filter(|k| k.starts_with(ident))
-            .next()
-        {
-            return Some(self.variables.get(key).unwrap());
-        }
+            .collect::<Vec<&String>>();
 
-        None
+        if matches.len() == 0 {
+            Ok(None)
+        } else if matches.len() > 1 {
+            Err(format!(
+                "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
+                ident
+            ))
+        } else {
+            Ok(Some(self.variables.get(matches[0]).unwrap()))
+        }
     }
 
     /// Sets the value of a variable
     /// Returns an error string if the variable is not defined
     pub fn set_var(&mut self, ident: &String, val: Value) -> Result<(), String> {
-        if let Some(key) = self
-            .variables
-            .clone()
+        let vars = self.variables.clone();
+        let matches = vars
             .keys()
             .filter(|k| k.starts_with(ident))
-            .next()
-        {
-            self.variables.insert(key.to_string(), val);
-            return Ok(());
-        } else {
-            return Err(format!(
+            .collect::<Vec<&String>>();
+
+        if matches.len() == 0 {
+            Err(format!(
                 "attempt to assign to an undefined variable `{}`",
                 ident
-            ));
+            ))
+        } else if matches.len() > 1 {
+            Err(format!(
+                "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
+                ident
+            ))
+        } else {
+            self.variables.insert(matches[0].to_string(), val);
+            Ok(())
         }
     }
 
@@ -181,7 +192,7 @@ pub struct Interpreter<'a> {
     body: &'a [Statement],
     line: usize,
     column: usize,
-    modified_variables: HashSet<String>
+    modified_variables: HashSet<String>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -193,7 +204,7 @@ impl<'a> Interpreter<'a> {
             body: ast,
             line: 0,
             column: 0,
-            modified_variables: HashSet::new()
+            modified_variables: HashSet::new(),
         }
     }
 
@@ -235,7 +246,7 @@ impl<'a> Interpreter<'a> {
                     ));
                 }
 
-                if let Some(v) = self.scope.get_var(&ident) {
+                if let Some(v) = self.scope.get_var(&ident).map_err(|e| self.error(e))? {
                     Ok(v.clone())
                 } else {
                     Err(self.error(format!("undefined reference to variable `{}`", ident)))
@@ -270,7 +281,12 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn eval_binaryop(&mut self, operator: &Token, left: &Box<Expression>, right: &Box<Expression>) -> Result<Value, InterpreterError> {
+    fn eval_binaryop(
+        &mut self,
+        operator: &Token,
+        left: &Box<Expression>,
+        right: &Box<Expression>,
+    ) -> Result<Value, InterpreterError> {
         let left_val = self.eval(left)?;
         let right_val = self.eval(right)?;
 
@@ -289,8 +305,9 @@ impl<'a> Interpreter<'a> {
             TokenType::LessThanOrEqual => left_val.less_than_eq(right_val),
             TokenType::GreaterThan => left_val.greater_than(right_val),
             TokenType::GreaterThanOrEqual => left_val.greater_than_eq(right_val),
-            _ => unreachable!()
-        }.map_err(|e| self.error(e))
+            _ => unreachable!(),
+        }
+        .map_err(|e| self.error(e))
     }
 
     fn eval(&mut self, expr: &Expression) -> Result<Value, InterpreterError> {
@@ -298,7 +315,11 @@ impl<'a> Interpreter<'a> {
             Expression::Literal { value } => self.eval_literal_token(value),
             Expression::Variable { name } => self.eval_variable_token(name),
             Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
-            Expression::BinaryOp { operator, left, right } => self.eval_binaryop(operator, left, right),
+            Expression::BinaryOp {
+                operator,
+                left,
+                right,
+            } => self.eval_binaryop(operator, left, right),
             _ => todo!(),
         }
     }
@@ -349,20 +370,94 @@ impl<'a> Interpreter<'a> {
 
                     while self.eval(&condition)?.is_truthy() {
                         let mut loop_interpreter = Interpreter::new(loop_scope.clone(), &loop_ast);
+                        loop_interpreter.line = self.line;
+                        loop_interpreter.column = self.column;
+
                         loop_interpreter.run()?;
-                        
+                        self.modified_variables
+                            .extend(loop_interpreter.modified_variables.clone());
+
                         for key in &loop_interpreter.modified_variables {
-                            match loop_interpreter.scope.variables.get(key) {
-                                Some(v) => {
-                                    loop_scope.variables.insert(key.to_string(), v.clone());
-                                    self.scope.variables.insert(key.to_string(), v.clone());
-                                },
-                                None => unreachable!()
+                            match loop_interpreter
+                                .scope
+                                .get_var(key)
+                                .map_err(|e| self.error(e))?
+                            {
+                                Some(v)
+                                    if self
+                                        .scope
+                                        .get_var(key)
+                                        .map_err(|e| self.error(e))?
+                                        .is_some() =>
+                                {
+                                    loop_scope
+                                        .set_var(key, v.clone())
+                                        .map_err(|e| self.error(e))?;
+                                    self.scope
+                                        .set_var(key, v.clone())
+                                        .map_err(|e| self.error(e))?;
+                                }
+                                Some(_) => continue,
+                                None => unreachable!(),
                             };
                         }
                     }
-
                 }
+
+                Statement::Conditional {
+                    condition,
+                    if_true,
+                    if_false,
+                } => {
+                    let condition_val = self.eval(condition)?;
+
+                    let body = if condition_val.is_truthy() {
+                        if_true
+                    } else if let Some(b) = if_false {
+                        b
+                    } else {
+                        continue;
+                    };
+
+                    let body_ast = match body.as_ref() {
+                        Statement::Block { statements } => statements,
+                        _ => unreachable!(),
+                    };
+
+                    let mut if_scope = self.scope.clone();
+                    if_scope.add_functions_from_ast(&body_ast);
+                    let mut if_interpreter = Interpreter::new(if_scope, &body_ast);
+                    if_interpreter.line = self.line;
+                    if_interpreter.column = self.column;
+
+                    if_interpreter.run()?;
+
+                    for key in &if_interpreter.modified_variables {
+                        match if_interpreter
+                            .scope
+                            .get_var(key)
+                            .map_err(|e| self.error(e))?
+                        {
+                            Some(v)
+                                if self
+                                    .scope
+                                    .get_var(key)
+                                    .map_err(|e| self.error(e))?
+                                    .is_some() =>
+                            {
+                                self.scope
+                                    .set_var(key, v.clone())
+                                    .map_err(|e| self.error(e))?
+                            }
+                            Some(_) => continue,
+                            None => unreachable!(),
+                        };
+                    }
+
+                    self.modified_variables
+                        .extend(if_interpreter.modified_variables);
+                }
+
                 _ => todo!(),
             }
         }
