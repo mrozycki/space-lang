@@ -19,6 +19,7 @@ pub enum TokenType {
     Let,
     Return,
     If,
+    Else,
     While,
     Eof,
     Plus,
@@ -274,6 +275,7 @@ impl<'a> Lexer<'a> {
             "let" => Some(self.emit(TokenType::Let)),
             "func" => Some(self.emit(TokenType::Func)),
             "if" => Some(self.emit(TokenType::If)),
+            "else" => Some(self.emit(TokenType::Else)),
             "while" => Some(self.emit(TokenType::While)),
             _ => None,
         }

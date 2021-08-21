@@ -1,6 +1,5 @@
 use crate::lexer::Token;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Expression {
     BinaryOp {
@@ -28,14 +27,13 @@ pub enum Expression {
     },
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Statement {
     Expression {
         expr: Expression,
     },
     Block {
-        statements: Vec<Box<Statement>>,
+        statements: Vec<Statement>,
     },
     Print {
         expr: Expression,
@@ -57,5 +55,8 @@ pub enum Statement {
     FunctionDefinition {
         parameters: Vec<Token>,
         body: Box<Statement>,
+    },
+    Return {
+        expression: Expression,
     },
 }

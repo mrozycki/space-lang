@@ -112,10 +112,8 @@ impl Parser {
                 self.tokens.next();
                 self.print_statement(newline)
             }
-            Some(TokenType::Let) => {
-                self.tokens.next();
-                self.definition_statement()
-            }
+            Some(TokenType::Let) => self.definition_statement(),
+            Some(TokenType::If) => self.conditional_statement(),
             Some(_) => self.expression_statement(),
             None => Err(self.error("Expected a statement")),
         }
@@ -143,6 +141,10 @@ impl Parser {
     }
 
     pub fn definition_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::Let])
+            .ok_or(self.error("Expected 'let' keyword"))?;
+
         let name = self
             .tokens
             .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
@@ -162,6 +164,59 @@ impl Parser {
             variable: name,
             value: initializer,
         })
+    }
+
+    pub fn conditional_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::If])
+            .ok_or(self.error("Expected 'if' keyword"))?;
+
+        let condition = self.expression()?;
+        let if_true = Box::new(self.block()?);
+
+        let if_false = if self
+            .tokens
+            .peek()
+            .map(|t| t.token_type == TokenType::Else)
+            .unwrap_or(false)
+        {
+            self.tokens.next();
+            Some(Box::new(match self.tokens.peek().map(|t| &t.token_type) {
+                Some(TokenType::LeftBrace) => self.block(),
+                Some(TokenType::If) => self.conditional_statement(),
+                _ => Err(self.error("Expected a block or 'if' statement after 'else'")),
+            }?))
+        } else {
+            None
+        };
+
+        Ok(Statement::Conditional {
+            condition,
+            if_true,
+            if_false,
+        })
+    }
+
+    pub fn block(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::LeftBrace])
+            .ok_or(self.error("Expected '{' at the start of the block"))?;
+
+        let mut statements = Vec::new();
+        while !self
+            .tokens
+            .peek()
+            .map(|t| t.token_type == TokenType::RightBrace)
+            .unwrap_or(true)
+        {
+            statements.push(self.statement()?);
+        }
+
+        self.tokens
+            .consume(vec![TokenType::RightBrace])
+            .ok_or(self.error("Expected '}' at the end of the block"))?;
+
+        Ok(Statement::Block { statements })
     }
 
     fn expression(&mut self) -> Result<Expression, ParserError> {
