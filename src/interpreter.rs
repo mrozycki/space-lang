@@ -20,14 +20,52 @@ impl Value {
 
     pub fn is_truthy(&self) -> bool {
         match self {
-            Value::Number(n) if n > &0 => true,
+            Value::Number(n) if *n > 0 => true,
             Value::String(s) if s.len() > 0 => true,
             _ => false
         }
     }
 
-    pub fn not_equal(&self, rhs: Value) -> Value {
-        Value::Number((self != &rhs).into())
+    // Operator impls:
+
+    fn get_numbers_binop(&self, rhs: Value) -> Result<(i64, i64), String> {
+        if let Value::Number(a) = self {
+            if let Value::Number(b) = rhs {
+                Ok((*a, b))
+            } else {
+                Err("RHS Value in binary operator must be a number".to_string())
+            }
+        } else {
+            Err("LHS Value in binary operator must be a number".to_string())
+        }
+    }
+
+    pub fn equal(&self, rhs: Value) -> Result<Value, String> {
+        Ok(Value::Number((*self == rhs).into()))
+    }
+
+    pub fn not_equal(&self, rhs: Value) -> Result<Value, String> {
+        Ok(Value::Number((*self != rhs).into()))
+    }
+
+    pub fn less_than(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a < b).into()))
+    }
+
+    pub fn less_than_eq(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a <= b).into()))
+    }
+
+    pub fn greater_than(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a > b).into()))
+    }
+
+    pub fn greater_than_eq(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a >= b).into()))
     }
 }
 
@@ -220,14 +258,14 @@ impl<'a> Interpreter<'a> {
             TokenType::And => todo!(),
             TokenType::Or => todo!(),
             TokenType::Not => todo!(),
-            TokenType::Equal => todo!(),
-            TokenType::NotEqual => Ok(left_val.not_equal(right_val)),
-            TokenType::LessThan => todo!(),
-            TokenType::LessThanOrEqual => todo!(),
-            TokenType::GreaterThan => todo!(),
-            TokenType::GreaterThanOrEqual => todo!(),
+            TokenType::Equal => left_val.equal(right_val),
+            TokenType::NotEqual => left_val.not_equal(right_val),
+            TokenType::LessThan => left_val.less_than(right_val),
+            TokenType::LessThanOrEqual => left_val.less_than_eq(right_val),
+            TokenType::GreaterThan => left_val.greater_than(right_val),
+            TokenType::GreaterThanOrEqual => left_val.greater_than_eq(right_val),
             _ => unreachable!()
-        }
+        }.map_err(|e| self.error(e))
     }
 
     fn eval(&mut self, expr: &Expression) -> Result<Value, InterpreterError> {
