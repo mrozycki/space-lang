@@ -17,8 +17,9 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "qp-trie"
-version = "0.7.6"
-source = "git+https://github.com/sdleffler/qp-trie-rs#a60eddd48d2cf8d1aff7eb019fd1a576c1d7e709"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65c28ae173e3e75d238fc7f558664fd6700d49a3a5a465d61671227e042dc747"
 dependencies = [
  "new_debug_unreachable",
  "unreachable",

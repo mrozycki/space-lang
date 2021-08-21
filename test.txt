@@ -1,12 +1,10 @@
-let number to check := 5;
+let number to check := 13;
 
 let prime check := 1;
 
 if number < 2 {
     prime := 0;
-} 
-
-if prime == 1 {
+} else {
     let i the potential divisor := 2;
     while i <= number / 2 {
         if number % i == 0 {

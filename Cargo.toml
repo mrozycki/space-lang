@@ -5,6 +5,5 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# Just PR'd a small improvement, not yet on crates.io
-[dependencies.qp-trie]
-git = "https://github.com/sdleffler/qp-trie-rs"
+[dependencies]
+qp-trie = "0.7.7"
