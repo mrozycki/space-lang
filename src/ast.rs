@@ -31,7 +31,7 @@ pub enum Expression {
     FunctionCall {
         callee: Box<Expression>,
         arguments: Vec<Expression>,
-    }
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +68,6 @@ pub enum Statement {
         expression: Option<Expression>,
     },
     CallBuiltin {
-        function: crate::builtins::BuiltinFunction
-    }
+        function: crate::builtins::BuiltinFunction,
+    },
 }

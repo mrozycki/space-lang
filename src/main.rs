@@ -1,8 +1,8 @@
 mod ast;
+mod builtins;
 mod interpreter;
 mod lexer;
 mod parser;
-mod builtins;
 
 use std::{
     env, fs,

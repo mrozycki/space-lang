@@ -1,13 +1,16 @@
 use crate::{
     ast::{Expression, Statement},
+    builtins,
     lexer::{Token, TokenType},
-    builtins
 };
 use gc::{Finalize, Gc, GcCell, Trace};
 use joinery::JoinableIterator;
 use qp_trie::{wrapper::BString, Trie};
-use std::{cell::RefCell, convert::{TryFrom, TryInto}};
 use std::fmt;
+use std::{
+    cell::RefCell,
+    convert::{TryFrom, TryInto},
+};
 
 #[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
 pub enum Value {
@@ -15,7 +18,7 @@ pub enum Value {
     String(String),
     Array(Gc<GcCell<Vec<Value>>>),
     Null,
-    Void
+    Void,
 }
 
 impl Default for Value {
@@ -31,7 +34,7 @@ impl fmt::Display for Value {
             Value::String(s) => f.write_str(s),
             Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
             Value::Null => f.write_str("<NULL>"),
-            Value::Void => f.write_str("<VOID>")
+            Value::Void => f.write_str("<VOID>"),
         }
     }
 }
@@ -43,7 +46,7 @@ impl Value {
             Value::String(s) => s.len() > 0,
             Value::Array(a) => a.borrow().len() > 0,
             Value::Null => false,
-            Value::Void => false
+            Value::Void => false,
         }
     }
 
@@ -144,7 +147,9 @@ impl Value {
 
     pub fn pow(&self, rhs: Value) -> Result<Value, String> {
         let (a, b) = self.get_numbers_binop(rhs)?;
-        let b: u32 = b.try_into().or(Err("in pow(): power must be nonnegative and within u32::MAX".to_string()))?;
+        let b: u32 = b.try_into().or(Err(
+            "in pow(): power must be nonnegative and within u32::MAX".to_string(),
+        ))?;
 
         Ok(Value::Number(a.pow(b)))
     }
@@ -243,7 +248,11 @@ impl Scope<'_> {
 
 impl Default for Scope<'_> {
     fn default() -> Self {
-        Self { parent_scope: Default::default(), variables: Default::default(), functions: builtins::builtins() }
+        Self {
+            parent_scope: Default::default(),
+            variables: Default::default(),
+            functions: builtins::builtins(),
+        }
     }
 }
 
@@ -335,7 +344,9 @@ impl<'b, 's> Interpreter<'b, 's> {
     ) -> Result<Value, InterpreterError> {
         let value = self.eval(expr, false)?;
         match target {
-            Expression::Variable { name } => *self.eval_variable_token(name)?.borrow_mut() = value.clone(),
+            Expression::Variable { name } => {
+                *self.eval_variable_token(name)?.borrow_mut() = value.clone()
+            }
             Expression::ArrayRef { array, index } => {
                 self.with_arrayref(array, index, |arr, i| {
                     arr.borrow_mut().get_mut(i).map(|slot| {
@@ -343,7 +354,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                     })
                 })?;
             }
-            _ => todo!()
+            _ => todo!(),
         }
         Ok(value)
     }
@@ -421,7 +432,7 @@ impl<'b, 's> Interpreter<'b, 's> {
             .scope
             .get_fn_and_scope(function_ident)
             .map_err(|e| self.error(e))?;
-            
+
         let mut call_scope = func_def_scope.child_scope();
 
         let (parameters, body): (&Vec<String>, &Box<Statement>) = match func_def {
@@ -433,7 +444,7 @@ impl<'b, 's> Interpreter<'b, 's> {
 
             Statement::CallBuiltin { function } => {
                 return function(evaluated_args).map_err(|e| self.error(e));
-            },
+            }
             _ => unreachable!(),
         };
 
@@ -458,8 +469,12 @@ impl<'b, 's> Interpreter<'b, 's> {
         function_interpreter.run()
     }
 
-    fn with_arrayref<R>(&mut self, array: &Expression, index: &Expression, 
-        f: impl FnOnce(&GcCell<Vec<Value>>, usize) -> Option<R>) -> Result<R, InterpreterError> {
+    fn with_arrayref<R>(
+        &mut self,
+        array: &Expression,
+        index: &Expression,
+        f: impl FnOnce(&GcCell<Vec<Value>>, usize) -> Option<R>,
+    ) -> Result<R, InterpreterError> {
         let array_value = self.eval(array, false)?;
         let array = match &array_value {
             Value::Array(a) => a,
@@ -472,10 +487,20 @@ impl<'b, 's> Interpreter<'b, 's> {
         };
 
         let length = array.borrow().len();
-        let adjusted = if index < 0 { index + length as i64 } else { index };
-        usize::try_from(adjusted).ok().and_then(|i| f(&array, i))
-            .ok_or_else(|| self.error(format!("index {} is out of bounds for a {}-element array",
-                        index, length)))
+        let adjusted = if index < 0 {
+            index + length as i64
+        } else {
+            index
+        };
+        usize::try_from(adjusted)
+            .ok()
+            .and_then(|i| f(&array, i))
+            .ok_or_else(|| {
+                self.error(format!(
+                    "index {} is out of bounds for a {}-element array",
+                    index, length
+                ))
+            })
     }
 
     fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
@@ -495,7 +520,8 @@ impl<'b, 's> Interpreter<'b, 's> {
                     }
                     Ok(Default::default())
                 } else {
-                    let values = elements.iter()
+                    let values = elements
+                        .iter()
                         .map(|element| self.eval(element, value_ignored))
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(Value::Array(Gc::new(GcCell::new(values))))
@@ -511,7 +537,9 @@ impl<'b, 's> Interpreter<'b, 's> {
                 right,
             } => self.eval_binaryop(operator, left, right),
             Expression::UnaryOp { operator, right } => self.eval_unaryop(operator, right),
-            Expression::FunctionCall { callee, arguments } => self.eval_functioncall(callee, arguments)
+            Expression::FunctionCall { callee, arguments } => {
+                self.eval_functioncall(callee, arguments)
+            }
         }
     }
 
@@ -564,7 +592,7 @@ impl<'b, 's> Interpreter<'b, 's> {
 
                         match loop_interpreter.run()? {
                             Value::Void => (),
-                            x => return Ok(x)
+                            x => return Ok(x),
                         };
                     }
                 }
@@ -596,7 +624,7 @@ impl<'b, 's> Interpreter<'b, 's> {
 
                     match if_interpreter.run()? {
                         Value::Void => (),
-                        x => return Ok(x)
+                        x => return Ok(x),
                     };
                 }
 
@@ -611,12 +639,12 @@ impl<'b, 's> Interpreter<'b, 's> {
                         Some(e) => self.eval(e, false),
                         None => Ok(Value::Null),
                     }
-                },
+                }
 
-                Statement::CallBuiltin {function: _} => unreachable!()
+                Statement::CallBuiltin { function: _ } => unreachable!(),
             }
         }
-        
+
         Ok(Value::Void)
     }
 }
