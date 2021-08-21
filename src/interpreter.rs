@@ -16,6 +16,12 @@ pub enum Value {
     Null,
 }
 
+impl Default for Value {
+    fn default() -> Value {
+        Value::Null
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -430,8 +436,26 @@ impl<'b, 's> Interpreter<'b, 's> {
     fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
-            Expression::Variable { name } if !value_ignored => self.eval_variable_token(name),
-            Expression::Variable { name: _ } => Ok(Value::Number(0)),
+            Expression::Variable { name } => {
+                if value_ignored {
+                    Ok(Default::default())
+                } else {
+                    self.eval_variable_token(name)
+                }
+            }
+            Expression::ArrayLiteral { elements } => {
+                if value_ignored {
+                    for element in elements {
+                        self.eval(element, value_ignored)?;
+                    }
+                    Ok(Default::default())
+                } else {
+                    let values = elements.iter()
+                        .map(|element| self.eval(element, value_ignored))
+                        .collect::<Result<Vec<Value>, _>>()?;
+                    Ok(Value::Array(Gc::new(GcCell::new(values))))
+                }
+            }
             Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
             Expression::BinaryOp {
                 operator,

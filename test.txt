@@ -1,5 +1,0 @@
-func test {
-    println("works");
-}
-
-test ();

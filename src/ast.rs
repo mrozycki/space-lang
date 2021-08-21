@@ -17,6 +17,9 @@ pub enum Expression {
     Variable {
         name: Token,
     },
+    ArrayLiteral {
+        elements: Vec<Expression>,
+    },
     Assignment {
         variable: Token,
         value: Box<Expression>,
