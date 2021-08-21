@@ -123,7 +123,7 @@ impl<'a> Lexer<'a> {
             self.advance();
             Ok(())
         } else {
-            Err(self.error(format!("Expected {}", c)))
+            Err(self.error(format!("Unexpected '{}'", c)))
         }
     }
 

@@ -7,14 +7,14 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(i64),
-    String(String)
+    String(String),
 }
 
 impl Value {
     pub fn to_string(&self) -> String {
         match self {
             Value::Number(n) => format!("{}", n),
-            Value::String(s) => s.clone()
+            Value::String(s) => s.clone(),
         }
     }
 }
@@ -35,10 +35,17 @@ impl<'a> Scope<'a> {
         }
     }
 
+    /// Checks is a variable is defined in the current scope or any parent scopes
     pub fn is_var_defined(&self, ident: &String) -> bool {
         let mut scope = self;
         loop {
-            if scope.variables.keys().filter(|k| k.starts_with(ident)).next() != None {
+            if scope
+                .variables
+                .keys()
+                .filter(|k| k.starts_with(ident))
+                .next()
+                != None
+            {
                 return true;
             }
 
@@ -52,10 +59,16 @@ impl<'a> Scope<'a> {
         false
     }
 
+    /// Gets a variable from the current scope or any parent scopes
     pub fn get_var(&self, ident: &String) -> Option<&Value> {
         let mut scope = self;
         loop {
-            if let Some(key) = scope.variables.keys().filter(|k| k.starts_with(ident)).next()  {
+            if let Some(key) = scope
+                .variables
+                .keys()
+                .filter(|k| k.starts_with(ident))
+                .next()
+            {
                 return Some(scope.variables.get(key).unwrap());
             }
 
@@ -67,6 +80,25 @@ impl<'a> Scope<'a> {
         }
 
         None
+    }
+
+    /// Sets a variable in the scope it was originally defined in
+    /// Returns a boolean indicating whether the variable was defined
+    pub fn set_var(&mut self, ident: &String, val: Value) -> bool {
+        if let Some(key) = self
+            .variables
+            .clone()
+            .keys()
+            .filter(|k| k.starts_with(ident))
+            .next()
+        {
+            self.variables.insert(key.to_string(), val);
+            return true;
+        } else if self.parent.is_some() {
+            return self.parent.as_deref_mut().unwrap().set_var(ident, val);
+        }
+
+        false
     }
 }
 
@@ -161,7 +193,34 @@ impl<'a> Interpreter<'a> {
                     Err(self.error(format!("undefined reference to variable `{}`", ident)))
                 }
             }
-            _ => unreachable!()
+            _ => unreachable!(),
+        }
+    }
+
+    fn eval_assignment(
+        &mut self,
+        variable: Token,
+        expr: Box<Expression>,
+    ) -> Result<Value, InterpreterError> {
+        match self.get_token_type(variable) {
+            TokenType::Identifier(ident, args) => {
+                if args.len() != 0 {
+                    return Err(self.error(
+                        "variable identifiers cannot contain backtick arguments".to_owned(),
+                    ));
+                }
+
+                let val = self.eval(*expr)?;
+                if self.scope.set_var(&ident, val.clone()) {
+                    Ok(val)
+                } else {
+                    Err(self.error(format!(
+                        "attempt to assign to undefined variable `{}`",
+                        ident
+                    )))
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -169,14 +228,17 @@ impl<'a> Interpreter<'a> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
             Expression::Variable { name } => self.eval_variable_token(name),
-            _ => todo!()
+            Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
+            _ => todo!(),
         }
     }
 
     pub fn run(&mut self) -> Result<(), InterpreterError> {
         for stmt in self.body.clone() {
             match stmt {
-                Statement::Expression { expr: _ } => continue,
+                Statement::Expression { expr } => {
+                    self.eval(expr)?;
+                }
                 Statement::Print { expr, newline } => {
                     let mut str = self.eval(expr)?.to_string();
                     if newline {
@@ -203,7 +265,7 @@ impl<'a> Interpreter<'a> {
                         self.scope.variables.insert(ident, val);
                     }
                 }
-                _ => todo!()
+                _ => todo!(),
             }
         }
 
