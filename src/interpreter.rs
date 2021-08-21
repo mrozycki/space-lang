@@ -14,6 +14,7 @@ pub enum Value {
     String(String),
     Array(Gc<GcCell<Vec<Value>>>),
     Null,
+    Void
 }
 
 impl Default for Value {
@@ -29,6 +30,7 @@ impl fmt::Display for Value {
             Value::String(s) => f.write_str(s),
             Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
             Value::Null => f.write_str("<NULL>"),
+            Value::Void => f.write_str("<VOID")
         }
     }
 }
@@ -40,6 +42,7 @@ impl Value {
             Value::String(s) => s.len() > 0,
             Value::Array(a) => a.borrow().len() > 0,
             Value::Null => false,
+            Value::Void => false
         }
     }
 
@@ -516,7 +519,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                         loop_interpreter.column = self.column;
 
                         match loop_interpreter.run()? {
-                            Value::Null => (),
+                            Value::Void => (),
                             x => return Ok(x)
                         };
                     }
@@ -548,7 +551,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                     if_interpreter.column = self.column;
 
                     match if_interpreter.run()? {
-                        Value::Null => (),
+                        Value::Void => (),
                         x => return Ok(x)
                     };
                 }
@@ -568,6 +571,6 @@ impl<'b, 's> Interpreter<'b, 's> {
             }
         }
         
-        Ok(Value::Null)
+        Ok(Value::Void)
     }
 }
