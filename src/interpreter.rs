@@ -92,6 +92,16 @@ impl Value {
         let (a, b) = self.get_numbers_binop(rhs)?;
         Ok(Value::Number((a % b).into()))
     }
+
+    pub fn and(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a & b).into()))
+    }
+
+    pub fn or(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a | b).into()))
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -296,9 +306,8 @@ impl<'a> Interpreter<'a> {
             TokenType::Star => left_val.multiply(right_val),
             TokenType::Slash => left_val.divide(right_val),
             TokenType::Modulo => left_val.modulo(right_val),
-            TokenType::And => todo!(),
-            TokenType::Or => todo!(),
-            TokenType::Not => todo!(),
+            TokenType::And => left_val.and(right_val),
+            TokenType::Or => left_val.or(right_val),
             TokenType::Equal => left_val.equal(right_val),
             TokenType::NotEqual => left_val.not_equal(right_val),
             TokenType::LessThan => left_val.less_than(right_val),
