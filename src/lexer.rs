@@ -26,6 +26,7 @@ pub enum TokenType {
     Minus,
     Star,
     Slash,
+    Modulo,
     And,
     Or,
     Not,
@@ -179,6 +180,9 @@ impl<'a> Lexer<'a> {
         } else if self.peek() == '/' {
             self.advance();
             Ok(self.emit(TokenType::Slash))
+        } else if self.peek() == '%' {
+            self.advance();
+            Ok(self.emit(TokenType::Modulo))
         } else if self.peek() == '&' {
             self.advance();
             self.consume('&')?;
@@ -253,16 +257,33 @@ impl<'a> Lexer<'a> {
     fn consume_string(&mut self) -> Result<Token, LexerError> {
         let mut value = String::new();
         self.consume('"')?;
-        while self.peek() != '"' {
-            // TODO: Add escape sequence handling
-            value.push(self.advance());
+        while self.peek() != '"' && self.peek() != char::default() {
+            if self.peek() == '\\' {
+                self.advance();
+                match self.peek() {
+                    'n' => {
+                        value.push('\n');
+                        self.advance();
+                    }
+                    't' => {
+                        value.push('\t');
+                        self.advance();
+                    }
+                    '"' | '\\' => {
+                        value.push(self.advance());
+                    }
+                    c => return Err(self.error(format!("Unknown escape '\\{}'", c))),
+                };
+            } else {
+                value.push(self.advance());
+            }
         }
         self.consume('"')?;
         Ok(self.emit(TokenType::String(value)))
     }
 
     fn is_operator_char(c: char) -> bool {
-        "{}()[]:;,+-*/&|<>=!".contains(c)
+        "{}()[]:;,+-*/%&|<>=!".contains(c)
     }
 
     fn is_naked_identifier_char(c: char) -> bool {
@@ -490,6 +511,44 @@ mod tests {
                 TokenType::Semicolon,
                 TokenType::Eof
             ])
+        );
+    }
+
+    #[test]
+    fn string_with_escape_characters() {
+        let program = "\"Hello,\\nworld\\t!\\\\\\\"\"";
+        assert_eq!(
+            lex(program),
+            Ok(vec![
+                TokenType::String("Hello,\nworld\t!\\\"".to_owned()),
+                TokenType::Eof
+            ])
+        );
+    }
+
+    #[test]
+    fn string_with_invalid_escape_characters_causes_error() {
+        let program = "\"Invalid \\escape\"";
+        assert_eq!(
+            lex(program),
+            Err(LexerError {
+                message: "Unknown escape '\\e'".to_owned(),
+                line: 1,
+                column: 10,
+            })
+        );
+    }
+
+    #[test]
+    fn unterminated_string() {
+        let program = "\"Hello, world!";
+        assert_eq!(
+            lex(program),
+            Err(LexerError {
+                message: "Expected \"".to_owned(),
+                line: 1,
+                column: 14,
+            })
         );
     }
 

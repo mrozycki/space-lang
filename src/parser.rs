@@ -279,11 +279,11 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expression, ParserError> {
-        let lvalue = self.equality()?;
+        let lvalue = self.logic_or()?;
 
         if let Some(..) = self.tokens.consume(vec![TokenType::Assign]) {
             if let Expression::Variable { name } = lvalue {
-                let rvalue = self.equality()?;
+                let rvalue = self.logic_or()?;
                 Ok(Expression::Assignment {
                     variable: name,
                     value: Box::new(rvalue),
@@ -294,6 +294,36 @@ impl Parser {
         } else {
             Ok(lvalue)
         }
+    }
+
+    fn logic_or(&mut self) -> Result<Expression, ParserError> {
+        let mut expr = self.logic_and()?;
+
+        while let Some(operator) = self.tokens.consume(vec![TokenType::Or]) {
+            let right = self.logic_and()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                right: Box::new(right),
+                operator,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn logic_and(&mut self) -> Result<Expression, ParserError> {
+        let mut expr = self.equality()?;
+
+        while let Some(operator) = self.tokens.consume(vec![TokenType::And]) {
+            let right = self.equality()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                right: Box::new(right),
+                operator,
+            };
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expression, ParserError> {
@@ -352,7 +382,10 @@ impl Parser {
     fn factor(&mut self) -> Result<Expression, ParserError> {
         let mut expr = self.unary()?;
 
-        while let Some(operator) = self.tokens.consume(vec![TokenType::Star, TokenType::Slash]) {
+        while let Some(operator) =
+            self.tokens
+                .consume(vec![TokenType::Star, TokenType::Slash, TokenType::Modulo])
+        {
             let right = self.unary()?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),

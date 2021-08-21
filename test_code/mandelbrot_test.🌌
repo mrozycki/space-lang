@@ -1,0 +1,1 @@
+while re*re + im*im < 4 && iteration count < maximum number of iterations { }
