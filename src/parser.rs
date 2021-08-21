@@ -114,6 +114,8 @@ impl Parser {
             }
             Some(TokenType::Let) => self.definition_statement(),
             Some(TokenType::If) => self.conditional_statement(),
+            Some(TokenType::While) => self.loop_statement(),
+            Some(TokenType::LeftParen) => self.block(),
             Some(_) => self.expression_statement(),
             None => Err(self.error("Expected a statement")),
         }
@@ -195,6 +197,16 @@ impl Parser {
             if_true,
             if_false,
         })
+    }
+
+    pub fn loop_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::While])
+            .ok_or(self.error("Expected 'while' keyword"))?;
+
+        let condition = self.expression()?;
+        let body = Box::new(self.block()?);
+        Ok(Statement::Loop { condition, body })
     }
 
     pub fn block(&mut self) -> Result<Statement, ParserError> {
