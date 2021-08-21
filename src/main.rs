@@ -1,6 +1,7 @@
 mod ast;
 mod lexer;
 mod parser;
+mod interpreter;
 
 use std::{
     env, fs,
@@ -9,6 +10,7 @@ use std::{
 
 use lexer::Lexer;
 use parser::Parser;
+use interpreter::Interpreter;
 
 fn process(code: &str) {
     let lexer = Lexer::new(code);
@@ -16,7 +18,13 @@ fn process(code: &str) {
         Ok(tokens) => {
             let parser = Parser::new(tokens);
             match parser.parse() {
-                Ok(expression) => println!("{:?}", expression),
+                Ok(expression) => {
+                    let mut interpreter = Interpreter::with_ast(expression);
+                    match interpreter.run() {
+                        Err(e) => eprintln!("Interpreter error: {}", e),
+                        _ => ()
+                    }
+                },
                 Err(e) => eprintln!("Parser error: {}", e),
             }
         }
