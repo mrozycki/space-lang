@@ -229,7 +229,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_operator_char(c: char) -> bool {
-        "{}()[]:;,+-*/&|".contains(c)
+        "{}()[]:;,+-*/&|<>=!".contains(c)
     }
 
     fn is_naked_identifier_char(c: char) -> bool {
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn a_whole_program_can_be_one_identifier() {
-        let program = "why did the chicken cross the road? to get to the 0ther side!";
+        let program = "why did the chicken cross the road? to get to the 0ther side";
 
         assert_eq!(
             lex(program),
@@ -325,12 +325,12 @@ mod tests {
 
     #[test]
     fn naked_identifier_includes_whitespace_after_it() {
-        let program = "Hello world! := 5;";
+        let program = "Hello world := 5;";
 
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("Hello world! ".to_owned(), Vec::new()),
+                Token::Identifier("Hello world ".to_owned(), Vec::new()),
                 Token::Assign,
                 Token::Number("5".to_owned()),
                 Token::Semicolon,
@@ -357,13 +357,13 @@ mod tests {
 
     #[test]
     fn keyword_at_the_beginning_of_naked_identifier_is_a_keyword() {
-        let program = "return hello world!;";
+        let program = "return hello world;";
 
         assert_eq!(
             lex(program),
             Ok(vec![
                 Token::Return,
-                Token::Identifier("hello world!".to_owned(), Vec::new()),
+                Token::Identifier("hello world".to_owned(), Vec::new()),
                 Token::Semicolon,
                 Token::Eof
             ])
@@ -372,12 +372,12 @@ mod tests {
 
     #[test]
     fn keyword_within_identifier_is_part_of_identifier() {
-        let program = "hello return world!;";
+        let program = "hello return world;";
 
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("hello return world!".to_owned(), Vec::new()),
+                Token::Identifier("hello return world".to_owned(), Vec::new()),
                 Token::Semicolon,
                 Token::Eof
             ])
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn operators_break_up_naked_identifiers() {
-        let program = "let Hello, world! := 42;";
+        let program = "let Hello, world := 42;";
 
         assert_eq!(
             lex(program),
@@ -427,7 +427,7 @@ mod tests {
                 Token::Let,
                 Token::Identifier("Hello".to_owned(), Vec::new()),
                 Token::Comma,
-                Token::Identifier("world! ".to_owned(), Vec::new()),
+                Token::Identifier("world ".to_owned(), Vec::new()),
                 Token::Assign,
                 Token::Number("42".to_owned()),
                 Token::Semicolon,
