@@ -10,7 +10,8 @@ fn create_builtin_statement(func: BuiltinFunction) -> Statement {
 
 pub fn builtins() -> Trie<BString, Statement> {
     [
-        ("pow", pow), 
+        ("pow", pow as BuiltinFunction), 
+        ("read line", read_line as BuiltinFunction)
     ].iter().map(|(name, func)| ((*name).into(), create_builtin_statement(*func))).collect()
 }
 
@@ -20,4 +21,10 @@ fn pow(args: Vec<Value>) -> Result<Value, String> {
     } else {
         args[0].pow(args[1].clone())
     }
+}
+
+fn read_line(_args: Vec<Value>) -> Result<Value, String> {
+    let mut buf = String::new();
+    std::io::stdin().read_line(&mut buf).map_err(|e| format!("in stdin(): IO Error: {}", e))?;
+    Ok(Value::String(buf))
 }
