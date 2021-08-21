@@ -2,6 +2,7 @@ mod ast;
 mod lexer;
 mod parser;
 mod interpreter;
+mod builtins;
 
 use std::{
     env, fs,

@@ -1,6 +1,7 @@
 use crate::{
     ast::{Expression, Statement},
     lexer::{Token, TokenType},
+    builtins
 };
 use gc::{Finalize, Gc, GcCell, Trace};
 use joinery::JoinableIterator;
@@ -132,7 +133,7 @@ impl Value {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Scope<'s> {
     parent_scope: Option<&'s Scope<'s>>,
     variables: Trie<BString, RefCell<Value>>,
@@ -218,8 +219,14 @@ impl Scope<'_> {
         Scope {
             parent_scope: Some(self),
             variables: Trie::new(),
-            functions: Trie::new(),
+            functions: builtins::builtins(),
         }
+    }
+}
+
+impl Default for Scope<'_> {
+    fn default() -> Self {
+        Self { parent_scope: Default::default(), variables: Default::default(), functions: builtins::builtins() }
     }
 }
 
@@ -413,6 +420,10 @@ impl<'b, 's> Interpreter<'b, 's> {
                 parameters,
                 body,
             } => (parameters, body),
+
+            Statement::CallBuiltin { function } => {
+                return function(evaluated_args);
+            },
             _ => unreachable!(),
         };
 
@@ -567,7 +578,9 @@ impl<'b, 's> Interpreter<'b, 's> {
                         Some(e) => self.eval(e, false),
                         None => Ok(Value::Null),
                     }
-                }
+                },
+
+                Statement::CallBuiltin {function: _} => unreachable!()
             }
         }
         
