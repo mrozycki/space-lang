@@ -2,7 +2,7 @@ use core::fmt;
 use std::{iter::Peekable, str::Chars};
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Token {
+pub enum TokenType {
     LeftBrace,
     RightBrace,
     LeftParen,
@@ -34,6 +34,13 @@ pub enum Token {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub line: usize,
+    pub column: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,13 +78,14 @@ impl<'a> Lexer<'a> {
     pub fn into_tokens(mut self) -> Result<Vec<Token>, LexerError> {
         let mut tokens = Vec::new();
         loop {
-            match self.next()? {
-                Token::Eof => {
-                    tokens.push(Token::Eof);
+            let next = self.next()?;
+            match next.token_type {
+                TokenType::Eof => {
+                    tokens.push(next);
                     break;
                 }
-                token => {
-                    tokens.push(token);
+                _ => {
+                    tokens.push(next);
                 }
             }
         }
@@ -117,6 +125,14 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn emit(&self, token_type: TokenType) -> Token {
+        Token {
+            token_type,
+            line: self.line,
+            column: self.column,
+        }
+    }
+
     pub fn next(&mut self) -> Result<Token, LexerError> {
         while self.peek().is_whitespace() {
             self.advance();
@@ -124,79 +140,79 @@ impl<'a> Lexer<'a> {
 
         if self.peek() == '{' {
             self.advance();
-            Ok(Token::LeftBrace)
+            Ok(self.emit(TokenType::LeftBrace))
         } else if self.peek() == '}' {
             self.advance();
-            Ok(Token::RightBrace)
+            Ok(self.emit(TokenType::RightBrace))
         } else if self.peek() == '(' {
             self.advance();
-            Ok(Token::LeftParen)
+            Ok(self.emit(TokenType::LeftParen))
         } else if self.peek() == ')' {
             self.advance();
-            Ok(Token::RightParen)
+            Ok(self.emit(TokenType::RightParen))
         } else if self.peek() == '[' {
             self.advance();
-            Ok(Token::LeftSquare)
+            Ok(self.emit(TokenType::LeftSquare))
         } else if self.peek() == ']' {
             self.advance();
-            Ok(Token::RightSquare)
+            Ok(self.emit(TokenType::RightSquare))
         } else if self.peek() == ';' {
             self.advance();
-            Ok(Token::Semicolon)
+            Ok(self.emit(TokenType::Semicolon))
         } else if self.peek() == ':' {
             self.advance();
             self.consume('=')?;
-            Ok(Token::Assign)
+            Ok(self.emit(TokenType::Assign))
         } else if self.peek() == ',' {
             self.advance();
-            Ok(Token::Comma)
+            Ok(self.emit(TokenType::Comma))
         } else if self.peek() == '+' {
             self.advance();
-            Ok(Token::Plus)
+            Ok(self.emit(TokenType::Plus))
         } else if self.peek() == '-' {
             self.advance();
-            Ok(Token::Minus)
+            Ok(self.emit(TokenType::Minus))
         } else if self.peek() == '*' {
             self.advance();
-            Ok(Token::Star)
+            Ok(self.emit(TokenType::Star))
         } else if self.peek() == '/' {
             self.advance();
-            Ok(Token::Slash)
+            Ok(self.emit(TokenType::Slash))
         } else if self.peek() == '&' {
             self.advance();
             self.consume('&')?;
-            Ok(Token::And)
+            Ok(self.emit(TokenType::And))
         } else if self.peek() == '|' {
             self.advance();
             self.consume('|')?;
-            Ok(Token::Or)
+            Ok(self.emit(TokenType::Or))
         } else if self.peek() == '!' {
             self.advance();
             if self.peek() == '=' {
                 self.advance();
-                Ok(Token::NotEqual)
+                Ok(self.emit(TokenType::NotEqual))
             } else {
-                Ok(Token::Not)
+                Ok(self.emit(TokenType::Not))
             }
         } else if self.peek() == '=' {
             self.advance();
             self.consume('=')?;
-            Ok(Token::Equal)
+            Ok(self.emit(TokenType::Equal))
         } else if self.peek() == '<' {
             self.advance();
             if self.peek() == '=' {
                 self.advance();
-                Ok(Token::LessThanOrEqual)
+                Ok(self.emit(TokenType::LessThanOrEqual))
             } else {
-                Ok(Token::LessThan)
+                Ok(self.emit(TokenType::LessThan))
             }
         } else if self.peek() == '>' {
             self.advance();
             if self.peek() == '=' {
                 self.advance();
-                Ok(Token::GreaterThanOrEqual)
+                Ok(self.emit(TokenType::GreaterThanOrEqual))
             } else {
-                Ok(Token::GreaterThan)
+                Ok(self.emit(TokenType::GreaterThan))
             }
         } else if self.peek() == '"' {
             Ok(self.consume_string()?)
@@ -207,7 +223,7 @@ impl<'a> Lexer<'a> {
         } else if self.peek() == '`' {
             Ok(self.consume_backtick_identifier())
         } else if self.peek() == char::default() {
-            Ok(Token::Eof)
+            Ok(self.emit(TokenType::Eof))
         } else {
             let peek = self.peek();
             Err(self.error(format!("Unexpected {}", peek)))
@@ -230,7 +246,7 @@ impl<'a> Lexer<'a> {
                 value.push(self.advance());
             }
         }
-        Ok(Token::Number(value))
+        Ok(self.emit(TokenType::Number(value)))
     }
 
     fn consume_string(&mut self) -> Result<Token, LexerError> {
@@ -241,7 +257,7 @@ impl<'a> Lexer<'a> {
             value.push(self.advance());
         }
         self.consume('"')?;
-        Ok(Token::String(value))
+        Ok(self.emit(TokenType::String(value)))
     }
 
     fn is_operator_char(c: char) -> bool {
@@ -252,13 +268,13 @@ impl<'a> Lexer<'a> {
         c != char::default() && !Self::is_operator_char(c)
     }
 
-    fn keyword(value: &str) -> Option<Token> {
+    fn keyword(&self, value: &str) -> Option<Token> {
         match value.trim_end() {
-            "return" => Some(Token::Return),
-            "let" => Some(Token::Let),
-            "func" => Some(Token::Func),
-            "if" => Some(Token::If),
-            "while" => Some(Token::While),
+            "return" => Some(self.emit(TokenType::Return)),
+            "let" => Some(self.emit(TokenType::Let)),
+            "func" => Some(self.emit(TokenType::Func)),
+            "if" => Some(self.emit(TokenType::If)),
+            "while" => Some(self.emit(TokenType::While)),
             _ => None,
         }
     }
@@ -269,7 +285,7 @@ impl<'a> Lexer<'a> {
 
         while Self::is_naked_identifier_char(self.peek()) {
             if self.peek().is_whitespace() {
-                if let Some(keyword_token) = Self::keyword(&value) {
+                if let Some(keyword_token) = self.keyword(&value) {
                     return keyword_token;
                 }
             } else if self.peek() == '`' {
@@ -287,10 +303,10 @@ impl<'a> Lexer<'a> {
             value.push(self.advance())
         }
 
-        if let Some(keyword_token) = Self::keyword(value.trim_end()) {
+        if let Some(keyword_token) = self.keyword(value.trim_end()) {
             keyword_token
         } else {
-            Token::Identifier(value, args)
+            self.emit(TokenType::Identifier(value, args))
         }
     }
 
@@ -301,7 +317,7 @@ impl<'a> Lexer<'a> {
             value.push(self.advance())
         }
         self.advance();
-        Token::Identifier(value, vec![])
+        self.emit(TokenType::Identifier(value, vec![]))
     }
 }
 
@@ -309,8 +325,10 @@ impl<'a> Lexer<'a> {
 mod tests {
     use super::*;
 
-    fn lex(code: &str) -> Result<Vec<Token>, LexerError> {
-        Lexer::new(code).into_tokens()
+    fn lex(code: &str) -> Result<Vec<TokenType>, LexerError> {
+        Lexer::new(code)
+            .into_tokens()
+            .map(|tokens| tokens.into_iter().map(|t| t.token_type).collect())
     }
 
     #[test]
@@ -320,8 +338,8 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier(program.to_owned(), Vec::new()),
-                Token::Eof
+                TokenType::Identifier(program.to_owned(), Vec::new()),
+                TokenType::Eof
             ])
         );
     }
@@ -333,11 +351,11 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("Hello world ".to_owned(), Vec::new()),
-                Token::Assign,
-                Token::Number("5".to_owned()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Identifier("Hello world ".to_owned(), Vec::new()),
+                TokenType::Assign,
+                TokenType::Number("5".to_owned()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -349,11 +367,11 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("Hello, world! := 5 - 2 < 3".to_owned(), Vec::new()),
-                Token::Assign,
-                Token::Number("5".to_owned()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Identifier("Hello, world! := 5 - 2 < 3".to_owned(), Vec::new()),
+                TokenType::Assign,
+                TokenType::Number("5".to_owned()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -365,10 +383,10 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Return,
-                Token::Identifier("hello world".to_owned(), Vec::new()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Return,
+                TokenType::Identifier("hello world".to_owned(), Vec::new()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -380,9 +398,9 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("hello return world".to_owned(), Vec::new()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Identifier("hello return world".to_owned(), Vec::new()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -394,9 +412,9 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("return hello world!".to_owned(), Vec::new()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Identifier("return hello world!".to_owned(), Vec::new()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -408,14 +426,14 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Func,
-                Token::Identifier(
+                TokenType::Func,
+                TokenType::Identifier(
                     "contains substring checks if `haystack` contains `needle` ".to_owned(),
                     vec!["haystack".to_owned(), "needle".to_owned()]
                 ),
-                Token::LeftBrace,
-                Token::RightBrace,
-                Token::Eof
+                TokenType::LeftBrace,
+                TokenType::RightBrace,
+                TokenType::Eof
             ])
         );
     }
@@ -427,14 +445,14 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Let,
-                Token::Identifier("Hello".to_owned(), Vec::new()),
-                Token::Comma,
-                Token::Identifier("world ".to_owned(), Vec::new()),
-                Token::Assign,
-                Token::Number("42".to_owned()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Let,
+                TokenType::Identifier("Hello".to_owned(), Vec::new()),
+                TokenType::Comma,
+                TokenType::Identifier("world ".to_owned(), Vec::new()),
+                TokenType::Assign,
+                TokenType::Number("42".to_owned()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -446,12 +464,12 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Let,
-                Token::Identifier("Hello, world!".to_owned(), Vec::new()),
-                Token::Assign,
-                Token::Number("42".to_owned()),
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Let,
+                TokenType::Identifier("Hello, world!".to_owned(), Vec::new()),
+                TokenType::Assign,
+                TokenType::Number("42".to_owned()),
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }
@@ -463,12 +481,12 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                Token::Identifier("print with new line".to_owned(), Vec::new()),
-                Token::LeftParen,
-                Token::String("Hello, world!".to_owned()),
-                Token::RightParen,
-                Token::Semicolon,
-                Token::Eof
+                TokenType::Identifier("print with new line".to_owned(), Vec::new()),
+                TokenType::LeftParen,
+                TokenType::String("Hello, world!".to_owned()),
+                TokenType::RightParen,
+                TokenType::Semicolon,
+                TokenType::Eof
             ])
         );
     }

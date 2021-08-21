@@ -15,10 +15,13 @@ fn process(code: &str) {
     match lexer.into_tokens() {
         Ok(tokens) => {
             let parser = Parser::new(tokens);
-            println!("{:?}", parser.parse());
+            match parser.parse() {
+                Ok(expression) => println!("{:?}", expression),
+                Err(e) => eprintln!("Parser error: {}", e),
+            }
         }
-        Err(..) => {
-            eprintln!("Parser error");
+        Err(e) => {
+            eprintln!("Lexer error: {}", e);
         }
     }
 }
