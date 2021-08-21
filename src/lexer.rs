@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{iter::Peekable, str::Chars};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     LeftBrace,
     RightBrace,
@@ -66,6 +66,22 @@ impl<'a> Lexer<'a> {
             line: 1,
             column: 0,
         }
+    }
+
+    pub fn into_tokens(mut self) -> Result<Vec<Token>, LexerError> {
+        let mut tokens = Vec::new();
+        loop {
+            match self.next()? {
+                Token::Eof => {
+                    tokens.push(Token::Eof);
+                    break;
+                }
+                token => {
+                    tokens.push(token);
+                }
+            }
+        }
+        Ok(tokens)
     }
 
     fn error(&self, message: String) -> LexerError {
@@ -294,20 +310,7 @@ mod tests {
     use super::*;
 
     fn lex(code: &str) -> Result<Vec<Token>, LexerError> {
-        let mut lexer = Lexer::new(code);
-        let mut tokens = Vec::new();
-        loop {
-            match lexer.next()? {
-                Token::Eof => {
-                    tokens.push(Token::Eof);
-                    break;
-                }
-                token => {
-                    tokens.push(token);
-                }
-            }
-        }
-        Ok(tokens)
+        Lexer::new(code).into_tokens()
     }
 
     #[test]

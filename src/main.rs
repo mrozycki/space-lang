@@ -1,29 +1,24 @@
 mod ast;
 mod lexer;
+mod parser;
 
 use std::{
     env, fs,
     io::{self, Read, Result},
 };
 
-use lexer::{Lexer, Token};
+use lexer::Lexer;
+use parser::Parser;
 
 fn process(code: &str) {
-    let mut lexer = Lexer::new(code);
-    #[allow(irrefutable_let_patterns)]
-    while let result = lexer.next() {
-        match result {
-            Ok(Token::Eof) => {
-                println!("Eof");
-                break;
-            }
-            Ok(token) => {
-                println!("{:?}", token);
-            }
-            Err(e) => {
-                eprintln!("{}", e);
-                break;
-            }
+    let lexer = Lexer::new(code);
+    match lexer.into_tokens() {
+        Ok(tokens) => {
+            let parser = Parser::new(tokens);
+            println!("{:?}", parser.parse());
+        }
+        Err(..) => {
+            eprintln!("Parser error");
         }
     }
 }

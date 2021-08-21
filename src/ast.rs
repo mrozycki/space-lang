@@ -1,15 +1,16 @@
 use crate::lexer::Token;
 
 #[allow(dead_code)]
-enum Expression {
+#[derive(Debug)]
+pub enum Expression {
     BinaryOp {
+        operator: Token,
         left: Box<Expression>,
         right: Box<Expression>,
-        operator: Token,
     },
     UnaryOp {
-        right: Box<Expression>,
         operator: Token,
+        right: Box<Expression>,
     },
     Literal {
         value: Token,
@@ -24,7 +25,7 @@ enum Expression {
 }
 
 #[allow(dead_code)]
-enum Statement {
+pub enum Statement {
     Expression {
         expr: Expression,
     },
