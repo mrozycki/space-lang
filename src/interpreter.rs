@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub enum Value {
     Number(i64),
     String(String),
+    Null
 }
 
 impl Value {
@@ -15,6 +16,7 @@ impl Value {
         match self {
             Value::Number(n) => format!("{}", n),
             Value::String(s) => s.clone(),
+            Value::Null => "<NULL>".to_string()
         }
     }
 
@@ -119,7 +121,7 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// Checks is a variable is defined in the current scope or any parent scopes
+    /// Checks is a variable is defined in the current scope
     pub fn is_var_defined(&self, ident: &String) -> bool {
         self.variables
             .keys()
@@ -128,7 +130,27 @@ impl Scope {
             != None
     }
 
-    /// Gets a variable from the current scope or any parent scopes
+    /// Gets a function from the scope
+    pub fn get_fn(&self, ident: &String) -> Result<Option<&Statement>, String> {
+        let matches = self
+            .functions
+            .keys()
+            .filter(|k| k.starts_with(ident))
+            .collect::<Vec<&String>>();
+
+        if matches.len() == 0 {
+            Ok(None)
+        } else if matches.len() > 1 {
+            Err(format!(
+                "Use of the identifier `{}` is ambiguous, it could refer to more than one function",
+                ident
+            ))
+        } else {
+            Ok(Some(self.functions.get(matches[0]).unwrap()))
+        }
+    }
+
+    /// Gets a variable from the current scope
     pub fn get_var(&self, ident: &String) -> Result<Option<&Value>, String> {
         let matches = self
             .variables
@@ -184,6 +206,10 @@ impl Scope {
                 self.functions.insert(name.to_string(), stmt.clone());
             };
         }
+    }
+
+    pub fn set_functions(&mut self, functions: HashMap<String, Statement>) {
+        self.functions = functions;
     }
 }
 
@@ -327,20 +353,90 @@ impl<'a> Interpreter<'a> {
         .map_err(|e| self.error(e))
     }
 
-    fn eval_unaryop(&mut self, operator: &Token, operand: &Box<Expression>) -> Result<Value, InterpreterError> {
+    fn eval_unaryop(
+        &mut self,
+        operator: &Token,
+        operand: &Box<Expression>,
+    ) -> Result<Value, InterpreterError> {
         let operand_val = self.eval(operand, false)?;
 
         match self.get_token_type(operator) {
             TokenType::Not => operand_val.not(),
             TokenType::Minus => operand_val.multiply(Value::Number(-1)),
-            _ => unreachable!()
-        }.map_err(|e| self.error(e))
+            _ => unreachable!(),
+        }
+        .map_err(|e| self.error(e))
+    }
+
+    fn eval_functioncall(
+        &mut self,
+        callee: &Box<Expression>,
+        arguments: &Vec<Expression>,
+    ) -> Result<Value, InterpreterError> {
+        let evaluated_arguments = arguments
+            .iter()
+            .map(|arg| self.eval(arg, false))
+            .collect::<Result<Vec<Value>, InterpreterError>>()?;
+
+        let function_ident = match callee.as_ref() {
+            Expression::Variable { name } => match self.get_token_type(&name) {
+                TokenType::Identifier(ident, args) => {
+                    if args.len() != 0 {
+                        return Err(self.error(
+                            "identifiers used to call a function cannot contain backtick arguments"
+                                .to_owned(),
+                        ));
+                    }
+                    ident
+                }
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        };
+
+        let mut function_scope = Scope::default();
+        function_scope.set_functions(self.scope.functions.clone());
+
+        match self
+            .scope
+            .get_fn(function_ident)
+            .map_err(|e| self.error(e))?
+        {
+            Some(Statement::FunctionDefinition {
+                name: _,
+                parameters,
+                body,
+            }) => {
+                if arguments.len() != parameters.len() {
+                    return Err(self.error(format!(
+                        "Incorrect number of arguments for function call, expected {} got {}",
+                        parameters.len(),
+                        arguments.len()
+                    )));
+                }
+
+                for (i, parameter) in parameters.iter().enumerate() {
+                    function_scope
+                        .set_var(parameter, evaluated_arguments[i].clone())
+                        .map_err(|e| self.error(e))?;
+                }
+
+                let function_ast = match body.as_ref() {
+                    Statement::Block { statements } => statements,
+                    _ => unreachable!(),
+                };
+
+                let mut function_interpreter = Interpreter::new(function_scope, function_ast);
+                return function_interpreter.run()
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
-            Expression::Variable { name } if !value_ignored  => self.eval_variable_token(name),
+            Expression::Variable { name } if !value_ignored => self.eval_variable_token(name),
             Expression::Variable { name: _ } => Ok(Value::Number(0)),
             Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
             Expression::BinaryOp {
@@ -349,11 +445,13 @@ impl<'a> Interpreter<'a> {
                 right,
             } => self.eval_binaryop(operator, left, right),
             Expression::UnaryOp { operator, right } => self.eval_unaryop(operator, right),
-            _ => todo!(),
+            Expression::FunctionCall { callee, arguments } => {
+                self.eval_functioncall(callee, arguments)
+            }
         }
     }
 
-    pub fn run(&mut self) -> Result<(), InterpreterError> {
+    pub fn run(&mut self) -> Result<Value, InterpreterError> {
         for stmt in self.body {
             match stmt {
                 Statement::Expression { expr } => {
@@ -395,7 +493,6 @@ impl<'a> Interpreter<'a> {
                     };
 
                     let mut loop_scope = self.scope.clone();
-                    loop_scope.add_functions_from_ast(&loop_ast);
 
                     while self.eval(&condition, false)?.is_truthy() {
                         let mut loop_interpreter = Interpreter::new(loop_scope.clone(), &loop_ast);
@@ -455,8 +552,7 @@ impl<'a> Interpreter<'a> {
                         _ => unreachable!(),
                     };
 
-                    let mut if_scope = self.scope.clone();
-                    if_scope.add_functions_from_ast(&body_ast);
+                    let if_scope = self.scope.clone();
                     let mut if_interpreter = Interpreter::new(if_scope, &body_ast);
                     if_interpreter.line = self.line;
                     if_interpreter.column = self.column;
@@ -490,11 +586,19 @@ impl<'a> Interpreter<'a> {
                         .extend(if_interpreter.modified_variables);
                 }
 
-                Statement::FunctionDefinition { name: _, parameters: _, body: _ } => (),
-                _ => todo!(),
+                Statement::FunctionDefinition {
+                    name: _,
+                    parameters: _,
+                    body: _,
+                } => (),
+                Statement::Block { statements: _ } => (),
+                Statement::Return { expression } => return match expression {
+                    Some(e) => self.eval(e, false),
+                    None => Ok(Value::Null)
+                },
             }
         }
 
-        Ok(())
+        Ok(Value::Null)
     }
 }

@@ -1,26 +1,5 @@
-let number to check := 5;
-
-let prime check := 1;
-
-if number < 2 {
-    prime := 0;
-} 
-
-if prime == 1 {
-    let i the potential divisor := 2;
-    while i <= number / 2 {
-        if number % i == 0 {
-            prime := 0;
-        }
-        
-        i := i + 1;
-    }
+func test {
+    println("works");
 }
 
-if prime {
-    print (number);
-    println (" is prime");
-} else {
-    print (number);
-    println (" is not prime");
-}
+test ();
