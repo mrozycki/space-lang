@@ -67,6 +67,31 @@ impl Value {
         let (a, b) = self.get_numbers_binop(rhs)?;
         Ok(Value::Number((a >= b).into()))
     }
+
+    pub fn add(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a + b).into()))
+    }
+
+    pub fn subtract(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a - b).into()))
+    }
+
+    pub fn multiply(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a * b).into()))
+    }
+
+    pub fn divide(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a / b).into()))
+    }
+
+    pub fn modulo(&self, rhs: Value) -> Result<Value, String> {
+        let (a, b) = self.get_numbers_binop(rhs)?;
+        Ok(Value::Number((a % b).into()))
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -250,11 +275,11 @@ impl<'a> Interpreter<'a> {
         let right_val = self.eval(right)?;
 
         match self.get_token_type(operator) {
-            TokenType::Plus => todo!(),
-            TokenType::Minus => todo!(),
-            TokenType::Star => todo!(),
-            TokenType::Slash => todo!(),
-            TokenType::Modulo => todo!(),
+            TokenType::Plus => left_val.add(right_val),
+            TokenType::Minus => left_val.subtract(right_val),
+            TokenType::Star => left_val.multiply(right_val),
+            TokenType::Slash => left_val.divide(right_val),
+            TokenType::Modulo => left_val.modulo(right_val),
             TokenType::And => todo!(),
             TokenType::Or => todo!(),
             TokenType::Not => todo!(),
