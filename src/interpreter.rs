@@ -2,29 +2,38 @@ use crate::{
     ast::{Expression, Statement},
     lexer::{Token, TokenType},
 };
-use std::collections::{HashMap, HashSet};
+use gc::{Finalize, Gc, GcCell, Trace};
+use joinery::JoinableIterator;
+use qp_trie::{wrapper::BString, Trie};
+use std::cell::RefCell;
+use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
 pub enum Value {
     Number(i64),
     String(String),
-    Null
+    Array(Gc<GcCell<Vec<Value>>>),
+    Null,
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => f.write_str(s),
+            Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
+            Value::Null => f.write_str("<NULL>"),
+        }
+    }
 }
 
 impl Value {
-    pub fn to_string(&self) -> String {
-        match self {
-            Value::Number(n) => format!("{}", n),
-            Value::String(s) => s.clone(),
-            Value::Null => "<NULL>".to_string()
-        }
-    }
-
     pub fn is_truthy(&self) -> bool {
         match self {
-            Value::Number(n) if *n > 0 => true,
-            Value::String(s) if s.len() > 0 => true,
-            _ => false,
+            Value::Number(n) => *n > 0,
+            Value::String(s) => s.len() > 0,
+            Value::Array(a) => a.borrow().len() > 0,
+            Value::Null => false,
         }
     }
 
@@ -114,84 +123,71 @@ impl Value {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Scope {
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Statement>,
+#[derive(Default, Debug)]
+pub struct Scope<'s> {
+    parent_scope: Option<&'s Scope<'s>>,
+    variables: Trie<BString, RefCell<Value>>,
+    functions: Trie<BString, Statement>,
 }
 
-impl Scope {
-    /// Checks is a variable is defined in the current scope
-    pub fn is_var_defined(&self, ident: &String) -> bool {
-        self.variables
-            .keys()
-            .filter(|k| k.starts_with(ident))
-            .next()
-            != None
+impl Scope<'_> {
+    /// Checks is a variable is defined in the current scope or any parent scopes
+    pub fn is_var_defined(&self, ident: &str) -> bool {
+        self.variables.iter_prefix_str(ident).next().is_some()
     }
 
-    /// Gets a function from the scope
-    pub fn get_fn(&self, ident: &String) -> Result<Option<&Statement>, String> {
-        let matches = self
-            .functions
-            .keys()
-            .filter(|k| k.starts_with(ident))
-            .collect::<Vec<&String>>();
+    /// Gets a function, and the scope it was defined in
+    pub fn get_fn_and_scope(&self, ident: &String) -> Result<(&Statement, &Scope), String> {
+        let mut scope = self;
+        loop {
+            let mut matches = scope.functions.iter_prefix_str(ident);
+            let func = match matches.next() {
+                Some(v) => (v.1, scope),
+                None => {
+                    if let Some(parent) = scope.parent_scope {
+                        scope = parent;
+                        continue;
+                    } else {
+                        return Err(format!("no such function: `{}`", ident));
+                    }
+                }
+            };
 
-        if matches.len() == 0 {
-            Ok(None)
-        } else if matches.len() > 1 {
-            Err(format!(
-                "Use of the identifier `{}` is ambiguous, it could refer to more than one function",
-                ident
-            ))
-        } else {
-            Ok(Some(self.functions.get(matches[0]).unwrap()))
+            if matches.next().is_some() {
+                return Err(format!(
+                    "Use of the identifier `{}` is ambiguous, it could refer to more than one function",
+                    ident
+                ));
+            } else {
+                return Ok(func);
+            }
         }
     }
 
-    /// Gets a variable from the current scope
-    pub fn get_var(&self, ident: &String) -> Result<Option<&Value>, String> {
-        let matches = self
-            .variables
-            .keys()
-            .filter(|k| k.starts_with(ident))
-            .collect::<Vec<&String>>();
+    pub fn var(&self, ident: &str) -> Result<&RefCell<Value>, String> {
+        let mut scope = self;
+        loop {
+            let mut matches = scope.variables.iter_prefix_str(ident);
+            let var = match matches.next() {
+                Some(v) => v,
+                None => {
+                    if let Some(parent) = scope.parent_scope {
+                        scope = parent;
+                        continue;
+                    } else {
+                        return Err(format!("no such variable: `{}`", ident));
+                    }
+                }
+            };
 
-        if matches.len() == 0 {
-            Ok(None)
-        } else if matches.len() > 1 {
-            Err(format!(
-                "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
-                ident
-            ))
-        } else {
-            Ok(Some(self.variables.get(matches[0]).unwrap()))
-        }
-    }
-
-    /// Sets the value of a variable
-    /// Returns an error string if the variable is not defined
-    pub fn set_var(&mut self, ident: &String, val: Value) -> Result<(), String> {
-        let vars = self.variables.clone();
-        let matches = vars
-            .keys()
-            .filter(|k| k.starts_with(ident))
-            .collect::<Vec<&String>>();
-
-        if matches.len() == 0 {
-            Err(format!(
-                "attempt to assign to an undefined variable `{}`",
-                ident
-            ))
-        } else if matches.len() > 1 {
-            Err(format!(
-                "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
-                ident
-            ))
-        } else {
-            self.variables.insert(matches[0].to_string(), val);
-            Ok(())
+            if matches.next().is_some() {
+                return Err(format!(
+                    "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
+                    ident
+                ));
+            } else {
+                return Ok(var.1);
+            }
         }
     }
 
@@ -203,13 +199,18 @@ impl Scope {
                 body: _,
             } = &stmt
             {
-                self.functions.insert(name.to_string(), stmt.clone());
+                self.functions.insert_str(name, stmt.clone());
             };
         }
     }
 
-    pub fn set_functions(&mut self, functions: HashMap<String, Statement>) {
-        self.functions = functions;
+    /// Create a new scope, with `self` as the parent.
+    pub fn child_scope(&self) -> Scope<'_> {
+        Scope {
+            parent_scope: Some(self),
+            variables: Trie::new(),
+            functions: Trie::new(),
+        }
     }
 }
 
@@ -231,16 +232,15 @@ impl std::fmt::Display for InterpreterError {
 }
 
 #[derive(Debug)]
-pub struct Interpreter<'a> {
-    scope: Scope,
-    body: &'a [Statement],
+pub struct Interpreter<'b, 's> {
+    scope: Scope<'s>,
+    body: &'b [Statement],
     line: usize,
     column: usize,
-    modified_variables: HashSet<String>,
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(mut scope: Scope, ast: &'a [Statement]) -> Self {
+impl<'b, 's> Interpreter<'b, 's> {
+    pub fn new(mut scope: Scope<'s>, ast: &'b [Statement]) -> Self {
         scope.add_functions_from_ast(ast);
 
         Self {
@@ -248,15 +248,14 @@ impl<'a> Interpreter<'a> {
             body: ast,
             line: 0,
             column: 0,
-            modified_variables: HashSet::new(),
         }
     }
 
-    pub fn with_ast(ast: &'a [Statement]) -> Self {
+    pub fn with_ast(ast: &'b [Statement]) -> Self {
         Self::new(Default::default(), ast)
     }
 
-    fn get_token_type<'b>(&mut self, token: &'b Token) -> &'b TokenType {
+    fn get_token_type<'t>(&mut self, token: &'t Token) -> &'t TokenType {
         self.line = token.line;
         self.column = token.column;
         &token.token_type
@@ -290,11 +289,8 @@ impl<'a> Interpreter<'a> {
                     ));
                 }
 
-                if let Some(v) = self.scope.get_var(&ident).map_err(|e| self.error(e))? {
-                    Ok(v.clone())
-                } else {
-                    Err(self.error(format!("undefined reference to variable `{}`", ident)))
-                }
+                let v = self.scope.var(&ident).map_err(|e| self.error(e))?;
+                Ok(v.borrow().clone())
             }
             _ => unreachable!(),
         }
@@ -314,11 +310,12 @@ impl<'a> Interpreter<'a> {
                 }
 
                 let val = self.eval(expr, false)?;
-                self.scope
-                    .set_var(&ident, val.clone())
-                    .map_err(|e| self.error(e))?;
+                *self
+                    .scope
+                    .var(&ident)
+                    .map_err(|e| self.error(e))?
+                    .borrow_mut() = val.clone();
 
-                self.modified_variables.insert(ident.to_string());
                 return Ok(val);
             }
             _ => unreachable!(),
@@ -373,11 +370,6 @@ impl<'a> Interpreter<'a> {
         callee: &Box<Expression>,
         arguments: &Vec<Expression>,
     ) -> Result<Value, InterpreterError> {
-        let evaluated_arguments = arguments
-            .iter()
-            .map(|arg| self.eval(arg, false))
-            .collect::<Result<Vec<Value>, InterpreterError>>()?;
-
         let function_ident = match callee.as_ref() {
             Expression::Variable { name } => match self.get_token_type(&name) {
                 TokenType::Identifier(ident, args) => {
@@ -394,43 +386,45 @@ impl<'a> Interpreter<'a> {
             _ => unreachable!(),
         };
 
-        let mut function_scope = Scope::default();
-        function_scope.set_functions(self.scope.functions.clone());
+        let mut evaluated_args = Vec::new();
+        for arg in arguments {
+            evaluated_args.push(self.eval(arg, false)?);
+        }
 
-        match self
+        let (func_def, func_def_scope) = self
             .scope
-            .get_fn(function_ident)
-            .map_err(|e| self.error(e))?
-        {
-            Some(Statement::FunctionDefinition {
+            .get_fn_and_scope(function_ident)
+            .map_err(|e| self.error(e))?;
+        let mut call_scope = func_def_scope.child_scope();
+
+        let (parameters, body): (&Vec<String>, &Box<Statement>) = match func_def {
+            Statement::FunctionDefinition {
                 name: _,
                 parameters,
                 body,
-            }) => {
-                if arguments.len() != parameters.len() {
-                    return Err(self.error(format!(
-                        "Incorrect number of arguments for function call, expected {} got {}",
-                        parameters.len(),
-                        arguments.len()
-                    )));
-                }
-
-                for (i, parameter) in parameters.iter().enumerate() {
-                    function_scope
-                        .set_var(parameter, evaluated_arguments[i].clone())
-                        .map_err(|e| self.error(e))?;
-                }
-
-                let function_ast = match body.as_ref() {
-                    Statement::Block { statements } => statements,
-                    _ => unreachable!(),
-                };
-
-                let mut function_interpreter = Interpreter::new(function_scope, function_ast);
-                return function_interpreter.run()
-            }
+            } => (parameters, body),
             _ => unreachable!(),
+        };
+
+        if arguments.len() != parameters.len() {
+            return Err(self.error(format!(
+                "Incorrect number of arguments for function call, expected {} got {}",
+                parameters.len(),
+                arguments.len()
+            )));
         }
+
+        for (param, arg) in parameters.iter().zip(evaluated_args) {
+            call_scope.variables.insert_str(param, RefCell::new(arg));
+        }
+
+        let function_ast = match body.as_ref() {
+            Statement::Block { statements } => statements,
+            _ => unreachable!(),
+        };
+
+        let mut function_interpreter = Interpreter::new(call_scope, function_ast);
+        function_interpreter.run()
     }
 
     fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
@@ -481,8 +475,8 @@ impl<'a> Interpreter<'a> {
                             )));
                         }
 
-                        let val = self.eval(&value, false)?.clone();
-                        self.scope.variables.insert(ident.to_string(), val);
+                        let val = self.eval(&value, false)?;
+                        self.scope.variables.insert_str(ident, RefCell::new(val));
                     }
                 }
 
@@ -492,43 +486,13 @@ impl<'a> Interpreter<'a> {
                         _ => unreachable!(),
                     };
 
-                    let mut loop_scope = self.scope.clone();
-
                     while self.eval(&condition, false)?.is_truthy() {
-                        let mut loop_interpreter = Interpreter::new(loop_scope.clone(), &loop_ast);
+                        let mut loop_interpreter =
+                            Interpreter::new(self.scope.child_scope(), &loop_ast);
                         loop_interpreter.line = self.line;
                         loop_interpreter.column = self.column;
 
                         loop_interpreter.run()?;
-                        self.modified_variables
-                            .extend(loop_interpreter.modified_variables.clone());
-
-                        for key in &loop_interpreter.modified_variables {
-                            if !self
-                                .scope
-                                .get_var(key)
-                                .map_err(|e| self.error(e))?
-                                .is_some()
-                            {
-                                continue;
-                            }
-
-                            match loop_interpreter
-                                .scope
-                                .get_var(key)
-                                .map_err(|e| self.error(e))?
-                            {
-                                Some(v) => {
-                                    loop_scope
-                                        .set_var(key, v.clone())
-                                        .map_err(|e| self.error(e))?;
-                                    self.scope
-                                        .set_var(key, v.clone())
-                                        .map_err(|e| self.error(e))?;
-                                }
-                                None => unreachable!(),
-                            };
-                        }
                     }
                 }
 
@@ -552,38 +516,12 @@ impl<'a> Interpreter<'a> {
                         _ => unreachable!(),
                     };
 
-                    let if_scope = self.scope.clone();
+                    let if_scope = self.scope.child_scope();
                     let mut if_interpreter = Interpreter::new(if_scope, &body_ast);
                     if_interpreter.line = self.line;
                     if_interpreter.column = self.column;
 
                     if_interpreter.run()?;
-
-                    for key in &if_interpreter.modified_variables {
-                        if !self
-                            .scope
-                            .get_var(key)
-                            .map_err(|e| self.error(e))?
-                            .is_some()
-                        {
-                            continue;
-                        }
-
-                        match if_interpreter
-                            .scope
-                            .get_var(key)
-                            .map_err(|e| self.error(e))?
-                        {
-                            Some(v) => self
-                                .scope
-                                .set_var(key, v.clone())
-                                .map_err(|e| self.error(e))?,
-                            None => unreachable!(),
-                        };
-                    }
-
-                    self.modified_variables
-                        .extend(if_interpreter.modified_variables);
                 }
 
                 Statement::FunctionDefinition {
@@ -592,10 +530,12 @@ impl<'a> Interpreter<'a> {
                     body: _,
                 } => (),
                 Statement::Block { statements: _ } => (),
-                Statement::Return { expression } => return match expression {
-                    Some(e) => self.eval(e, false),
-                    None => Ok(Value::Null)
-                },
+                Statement::Return { expression } => {
+                    return match expression {
+                        Some(e) => self.eval(e, false),
+                        None => Ok(Value::Null),
+                    }
+                }
             }
         }
 
