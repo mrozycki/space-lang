@@ -102,6 +102,14 @@ impl Value {
         let (a, b) = self.get_numbers_binop(rhs)?;
         Ok(Value::Number((a | b).into()))
     }
+
+    pub fn not(&self) -> Result<Value, String> {
+        if let Value::Number(a) = self {
+            Ok(Value::Number(!a))
+        } else {
+            Err("operand for unary operator must be a number".to_string())
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -279,7 +287,7 @@ impl<'a> Interpreter<'a> {
                     ));
                 }
 
-                let val = self.eval(expr)?;
+                let val = self.eval(expr, false)?;
                 self.scope
                     .set_var(&ident, val.clone())
                     .map_err(|e| self.error(e))?;
@@ -297,8 +305,8 @@ impl<'a> Interpreter<'a> {
         left: &Box<Expression>,
         right: &Box<Expression>,
     ) -> Result<Value, InterpreterError> {
-        let left_val = self.eval(left)?;
-        let right_val = self.eval(right)?;
+        let left_val = self.eval(left, false)?;
+        let right_val = self.eval(right, false)?;
 
         match self.get_token_type(operator) {
             TokenType::Plus => left_val.add(right_val),
@@ -319,16 +327,28 @@ impl<'a> Interpreter<'a> {
         .map_err(|e| self.error(e))
     }
 
-    fn eval(&mut self, expr: &Expression) -> Result<Value, InterpreterError> {
+    fn eval_unaryop(&mut self, operator: &Token, operand: &Box<Expression>) -> Result<Value, InterpreterError> {
+        let operand_val = self.eval(operand, false)?;
+
+        match self.get_token_type(operator) {
+            TokenType::Not => operand_val.not(),
+            TokenType::Minus => operand_val.multiply(Value::Number(-1)),
+            _ => unreachable!()
+        }.map_err(|e| self.error(e))
+    }
+
+    fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
-            Expression::Variable { name } => self.eval_variable_token(name),
+            Expression::Variable { name } if !value_ignored  => self.eval_variable_token(name),
+            Expression::Variable { name: _ } => Ok(Value::Number(0)),
             Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
             Expression::BinaryOp {
                 operator,
                 left,
                 right,
             } => self.eval_binaryop(operator, left, right),
+            Expression::UnaryOp { operator, right } => self.eval_unaryop(operator, right),
             _ => todo!(),
         }
     }
@@ -337,11 +357,11 @@ impl<'a> Interpreter<'a> {
         for stmt in self.body {
             match stmt {
                 Statement::Expression { expr } => {
-                    self.eval(&expr)?;
+                    self.eval(&expr, true)?;
                 }
 
                 Statement::Print { expr, newline } => {
-                    let mut str = self.eval(&expr)?.to_string();
+                    let mut str = self.eval(&expr, false)?.to_string();
                     if *newline {
                         str.push('\n')
                     }
@@ -363,7 +383,7 @@ impl<'a> Interpreter<'a> {
                             )));
                         }
 
-                        let val = self.eval(&value)?.clone();
+                        let val = self.eval(&value, false)?.clone();
                         self.scope.variables.insert(ident.to_string(), val);
                     }
                 }
@@ -377,7 +397,7 @@ impl<'a> Interpreter<'a> {
                     let mut loop_scope = self.scope.clone();
                     loop_scope.add_functions_from_ast(&loop_ast);
 
-                    while self.eval(&condition)?.is_truthy() {
+                    while self.eval(&condition, false)?.is_truthy() {
                         let mut loop_interpreter = Interpreter::new(loop_scope.clone(), &loop_ast);
                         loop_interpreter.line = self.line;
                         loop_interpreter.column = self.column;
@@ -420,7 +440,7 @@ impl<'a> Interpreter<'a> {
                     if_true,
                     if_false,
                 } => {
-                    let condition_val = self.eval(condition)?;
+                    let condition_val = self.eval(condition, false)?;
 
                     let body = if condition_val.is_truthy() {
                         if_true
@@ -470,6 +490,7 @@ impl<'a> Interpreter<'a> {
                         .extend(if_interpreter.modified_variables);
                 }
 
+                Statement::FunctionDefinition { name: _, parameters: _, body: _ } => (),
                 _ => todo!(),
             }
         }
