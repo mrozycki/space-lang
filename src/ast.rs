@@ -20,8 +20,12 @@ pub enum Expression {
     ArrayLiteral {
         elements: Vec<Expression>,
     },
+    ArrayRef {
+        array: Box<Expression>,
+        index: Box<Expression>,
+    },
     Assignment {
-        variable: Token,
+        target: Box<Expression>,
         value: Box<Expression>,
     },
     FunctionCall {

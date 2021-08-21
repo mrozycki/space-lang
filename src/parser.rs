@@ -282,15 +282,11 @@ impl Parser {
         let lvalue = self.logic_or()?;
 
         if let Some(..) = self.tokens.consume(vec![TokenType::Assign]) {
-            if let Expression::Variable { name } = lvalue {
-                let rvalue = self.logic_or()?;
-                Ok(Expression::Assignment {
-                    variable: name,
-                    value: Box::new(rvalue),
-                })
-            } else {
-                Err(self.error("Invalid lvalue: expected a variable name"))
-            }
+            let rvalue = self.logic_or()?;
+            Ok(Expression::Assignment {
+                target: Box::new(lvalue),
+                value: Box::new(rvalue),
+            })
         } else {
             Ok(lvalue)
         }
@@ -400,41 +396,56 @@ impl Parser {
     fn unary(&mut self) -> Result<Expression, ParserError> {
         if let Some(operator) = self.tokens.consume(vec![TokenType::Minus, TokenType::Not]) {
             Ok(Expression::UnaryOp {
-                right: Box::new(self.call()?),
+                right: Box::new(self.postfix()?),
                 operator,
             })
         } else {
-            self.call()
+            self.postfix()
         }
     }
 
-    fn call(&mut self) -> Result<Expression, ParserError> {
-        let expression = self.primary()?;
+    fn postfix(&mut self) -> Result<Expression, ParserError> {
+        let mut expression = self.primary()?;
 
-        if self
-            .tokens
-            .peek()
-            .map(|t| t.token_type == TokenType::LeftParen)
-            .unwrap_or(false)
-        {
-            self.tokens.next();
-            let mut arguments = Vec::new();
-            while self.tokens.peek().map_or(false, |tok| tok.token_type != TokenType::RightParen) {
-                arguments.push(self.expression()?);
-                if let None = self.tokens.consume(vec![TokenType::Comma]) {
-                    break;
+        while let Some(tok) = self.tokens.peek() {
+            match tok.token_type {
+                TokenType::LeftParen => {
+                    self.tokens.next();
+                    let mut arguments = Vec::new();
+                    while self
+                        .tokens
+                        .peek()
+                        .map_or(false, |tok| tok.token_type != TokenType::RightParen)
+                    {
+                        arguments.push(self.expression()?);
+                        if let None = self.tokens.consume(vec![TokenType::Comma]) {
+                            break;
+                        }
+                    }
+                    self.tokens
+                        .consume(vec![TokenType::RightParen])
+                        .ok_or(self.error("Expected ')' at the end of the parameter list"))?;
+                    expression = Expression::FunctionCall {
+                        callee: Box::new(expression),
+                        arguments,
+                    };
                 }
+                TokenType::LeftSquare => {
+                    self.tokens.next();
+                    let index = self.expression()?;
+                    self.tokens
+                        .consume(vec![TokenType::RightSquare])
+                        .ok_or(self.error("Expected ']' at the end of the array access"))?;
+                    expression = Expression::ArrayRef {
+                        array: Box::new(expression),
+                        index: Box::new(index),
+                    };
+                }
+                _ => break,
             }
-            self.tokens
-                .consume(vec![TokenType::RightParen])
-                .ok_or(self.error("Expected ')' at the end of the parameter list"))?;
-            Ok(Expression::FunctionCall {
-                callee: Box::new(expression),
-                arguments,
-            })
-        } else {
-            Ok(expression)
         }
+
+        Ok(expression)
     }
 
     fn primary(&mut self) -> Result<Expression, ParserError> {
@@ -456,7 +467,11 @@ impl Parser {
             }
         } else if let Some(_) = self.tokens.consume(vec![TokenType::LeftSquare]) {
             let mut elements = Vec::new();
-            while self.tokens.peek().map_or(false, |tok| tok.token_type != TokenType::RightSquare) {
+            while self
+                .tokens
+                .peek()
+                .map_or(false, |tok| tok.token_type != TokenType::RightSquare)
+            {
                 elements.push(self.expression()?);
                 if let None = self.tokens.consume(vec![TokenType::Comma]) {
                     break;
@@ -464,7 +479,7 @@ impl Parser {
             }
             self.tokens
                 .consume(vec![TokenType::RightSquare])
-                .ok_or(self.error("Expected ')' at the end of the parameter list"))?;
+                .ok_or(self.error("Expected ']' at the end of the array literal"))?;
             Ok(Expression::ArrayLiteral { elements })
         } else {
             Err(self.error("Expected a primary value"))

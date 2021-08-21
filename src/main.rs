@@ -1,7 +1,7 @@
 mod ast;
+mod interpreter;
 mod lexer;
 mod parser;
-mod interpreter;
 mod builtins;
 
 use std::{
@@ -9,9 +9,9 @@ use std::{
     io::{self, Read, Result},
 };
 
+use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
-use interpreter::Interpreter;
 
 fn process(code: &str) {
     let lexer = Lexer::new(code);
@@ -23,9 +23,9 @@ fn process(code: &str) {
                     let mut interpreter = Interpreter::with_ast(&expression);
                     match interpreter.run() {
                         Err(e) => eprintln!("Interpreter error: {}", e),
-                        _ => ()
+                        _ => (),
                     }
-                },
+                }
                 Err(e) => eprintln!("Parser error: {}", e),
             }
         }

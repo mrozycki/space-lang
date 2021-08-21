@@ -6,7 +6,7 @@ use crate::{
 use gc::{Finalize, Gc, GcCell, Trace};
 use joinery::JoinableIterator;
 use qp_trie::{wrapper::BString, Trie};
-use std::{cell::RefCell, convert::TryInto};
+use std::{cell::RefCell, convert::{TryFrom, TryInto}};
 use std::fmt;
 
 #[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
@@ -31,7 +31,7 @@ impl fmt::Display for Value {
             Value::String(s) => f.write_str(s),
             Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
             Value::Null => f.write_str("<NULL>"),
-            Value::Void => f.write_str("<VOID")
+            Value::Void => f.write_str("<VOID>")
         }
     }
 }
@@ -44,6 +44,16 @@ impl Value {
             Value::Array(a) => a.borrow().len() > 0,
             Value::Null => false,
             Value::Void => false
+        }
+    }
+
+    pub fn describe_type(&self) -> &'static str {
+        match self {
+            Value::Number(_) => "a number",
+            Value::String(_) => "a string",
+            Value::Array(_) => "an array",
+            Value::Null => "NULL",
+            Value::Void => unreachable!(),
         }
     }
 
@@ -303,7 +313,7 @@ impl<'b, 's> Interpreter<'b, 's> {
         }
     }
 
-    fn eval_variable_token(&mut self, token: &Token) -> Result<Value, InterpreterError> {
+    fn eval_variable_token(&mut self, token: &Token) -> Result<&RefCell<Value>, InterpreterError> {
         match self.get_token_type(token) {
             TokenType::Identifier(ident, args) => {
                 if args.len() != 0 {
@@ -312,8 +322,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                     ));
                 }
 
-                let v = self.scope.var(&ident).map_err(|e| self.error(e))?;
-                Ok(v.borrow().clone())
+                self.scope.var(&ident).map_err(|e| self.error(e))
             }
             _ => unreachable!(),
         }
@@ -321,28 +330,22 @@ impl<'b, 's> Interpreter<'b, 's> {
 
     fn eval_assignment(
         &mut self,
-        variable: &Token,
-        expr: &Box<Expression>,
+        target: &Expression,
+        expr: &Expression,
     ) -> Result<Value, InterpreterError> {
-        match self.get_token_type(variable) {
-            TokenType::Identifier(ident, args) => {
-                if args.len() != 0 {
-                    return Err(self.error(
-                        "variable identifiers cannot contain backtick arguments".to_owned(),
-                    ));
-                }
-
-                let val = self.eval(expr, false)?;
-                *self
-                    .scope
-                    .var(&ident)
-                    .map_err(|e| self.error(e))?
-                    .borrow_mut() = val.clone();
-
-                return Ok(val);
+        let value = self.eval(expr, false)?;
+        match target {
+            Expression::Variable { name } => *self.eval_variable_token(name)?.borrow_mut() = value.clone(),
+            Expression::ArrayRef { array, index } => {
+                self.with_arrayref(array, index, |arr, i| {
+                    arr.borrow_mut().get_mut(i).map(|slot| {
+                        *slot = value.clone();
+                    })
+                })?;
             }
-            _ => unreachable!(),
+            _ => todo!()
         }
+        Ok(value)
     }
 
     fn eval_binaryop(
@@ -455,6 +458,26 @@ impl<'b, 's> Interpreter<'b, 's> {
         function_interpreter.run()
     }
 
+    fn with_arrayref<R>(&mut self, array: &Expression, index: &Expression, 
+        f: impl FnOnce(&GcCell<Vec<Value>>, usize) -> Option<R>) -> Result<R, InterpreterError> {
+        let array_value = self.eval(array, false)?;
+        let array = match &array_value {
+            Value::Array(a) => a,
+            v => return Err(self.error(format!("cannot index into {}", v.describe_type()))),
+        };
+
+        let index = match self.eval(index, false)? {
+            Value::Number(n) => n,
+            v => return Err(self.error(format!("{} cannot be an index", v.describe_type()))),
+        };
+
+        let length = array.borrow().len();
+        let adjusted = if index < 0 { index + length as i64 } else { index };
+        usize::try_from(adjusted).ok().and_then(|i| f(&array, i))
+            .ok_or_else(|| self.error(format!("index {} is out of bounds for a {}-element array",
+                        index, length)))
+    }
+
     fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
@@ -462,7 +485,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                 if value_ignored {
                     Ok(Default::default())
                 } else {
-                    self.eval_variable_token(name)
+                    Ok(self.eval_variable_token(name)?.borrow().clone())
                 }
             }
             Expression::ArrayLiteral { elements } => {
@@ -474,11 +497,14 @@ impl<'b, 's> Interpreter<'b, 's> {
                 } else {
                     let values = elements.iter()
                         .map(|element| self.eval(element, value_ignored))
-                        .collect::<Result<Vec<Value>, _>>()?;
+                        .collect::<Result<Vec<_>, _>>()?;
                     Ok(Value::Array(Gc::new(GcCell::new(values))))
                 }
             }
-            Expression::Assignment { variable, value } => self.eval_assignment(variable, value),
+            Expression::ArrayRef { array, index } => {
+                self.with_arrayref(array, index, |arr, i| arr.borrow().get(i).cloned())
+            }
+            Expression::Assignment { target, value } => self.eval_assignment(target, value),
             Expression::BinaryOp {
                 operator,
                 left,

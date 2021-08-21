@@ -1,0 +1,13 @@
+let my array := [1, 2, "hi"];
+println (my arr);
+println ([
+    1,
+    2,
+    "commas at end are ok",
+]);
+
+my array[2] := 3;
+println(my array);
+my array[-1] := 1;
+println(my array);
+

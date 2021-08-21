@@ -123,7 +123,11 @@ impl<'a> Lexer<'a> {
             self.advance();
             Ok(())
         } else {
-            Err(self.error(format!("Unexpected '{}'", c)))
+            if c == '=' {
+                Err(self.error(format!("Unexpected '=' instead of ':='")))
+            } else {
+                Err(self.error(format!("Unexpected '{}'", c)))
+            }
         }
     }
 
