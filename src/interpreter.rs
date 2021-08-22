@@ -734,6 +734,8 @@ impl<'b, 's> Interpreter<'b, 's> {
                         loop_interpreter.column = self.column;
 
                         let result = loop_interpreter.run();
+                        self.line = if_interpreter.line;
+                        self.column = if_interpreter.column;
 
                         if !loop_interpreter.variable_exports.is_empty() || !loop_interpreter.function_exports.is_empty() {
                             return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
@@ -773,6 +775,9 @@ impl<'b, 's> Interpreter<'b, 's> {
                     if_interpreter.column = self.column;
 
                     if_interpreter.run()?;
+                    self.line = if_interpreter.line;
+                    self.column = if_interpreter.column;
+
                     if !if_interpreter.variable_exports.is_empty() || !if_interpreter.function_exports.is_empty() {
                         return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
                     }
