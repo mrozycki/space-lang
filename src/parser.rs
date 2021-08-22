@@ -40,7 +40,8 @@ impl TokenIterator {
     fn is_same_token_type(a: &TokenType, b: &TokenType) -> bool {
         match (a, b) {
             (TokenType::Identifier(..), TokenType::Identifier(..)) => true,
-            (TokenType::Number(..), TokenType::Number(..)) => true,
+            (TokenType::Integer(..), TokenType::Integer(..)) => true,
+            (TokenType::Float(..), TokenType::Float(..)) => true,
             (TokenType::String(..), TokenType::String(..)) => true,
             (a, b) => a == b,
         }
@@ -450,10 +451,12 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expression, ParserError> {
-        if let Some(string) = self.tokens.consume(vec![TokenType::String(String::new())]) {
-            Ok(Expression::Literal { value: string })
-        } else if let Some(number) = self.tokens.consume(vec![TokenType::Number(String::new())]) {
-            Ok(Expression::Literal { value: number })
+        if let Some(value) = self.tokens.consume(vec![
+            TokenType::String(String::new()),
+            TokenType::Integer(String::new()),
+            TokenType::Float(String::new()),
+        ]) {
+            Ok(Expression::Literal { value })
         } else if let Some(identifier) = self
             .tokens
             .consume(vec![TokenType::Identifier(String::new(), Vec::new())])

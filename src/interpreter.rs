@@ -13,9 +13,10 @@ use std::{
     ops::{ControlFlow, FromResidual, Try},
 };
 
-#[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
+#[derive(Debug, Clone, Trace, Finalize, PartialEq)]
 pub enum Value {
-    Number(i64),
+    Integer(i64),
+    Float(f64),
     String(String),
     Array(Gc<GcCell<Vec<Value>>>),
     Null,
@@ -30,7 +31,8 @@ impl Default for Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Number(n) => write!(f, "{}", n),
+            Value::Integer(n) => write!(f, "{}", n),
+            Value::Float(n) => write!(f, "{}", n),
             Value::String(s) => f.write_str(s),
             Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
             Value::Null => f.write_str("<NULL>"),
@@ -41,7 +43,8 @@ impl fmt::Display for Value {
 impl Value {
     pub fn is_truthy(&self) -> bool {
         match self {
-            Value::Number(n) => *n > 0,
+            Value::Integer(n) => *n > 0,
+            Value::Float(n) => *n != 0.0,
             Value::String(s) => s.len() > 0,
             Value::Array(a) => a.borrow().len() > 0,
             Value::Null => false,
@@ -50,7 +53,8 @@ impl Value {
 
     pub fn describe_type(&self) -> &'static str {
         match self {
-            Value::Number(_) => "a number",
+            Value::Integer(_) => "an integer",
+            Value::Float(_) => "a floating point number",
             Value::String(_) => "a string",
             Value::Array(_) => "an array",
             Value::Null => "NULL",
@@ -60,8 +64,8 @@ impl Value {
     // Operator impls:
 
     fn get_numbers_binop(&self, rhs: Value) -> Result<(i64, i64), String> {
-        if let Value::Number(a) = self {
-            if let Value::Number(b) = rhs {
+        if let Value::Integer(a) = self {
+            if let Value::Integer(b) = rhs {
                 Ok((*a, b))
             } else {
                 Err("RHS Value in binary operator must be a number".to_string())
@@ -72,89 +76,120 @@ impl Value {
     }
 
     pub fn equal(&self, rhs: Value) -> Result<Value, String> {
-        Ok(Value::Number((*self == rhs).into()))
+        Ok(Value::Integer((*self == rhs).into()))
     }
 
     pub fn not_equal(&self, rhs: Value) -> Result<Value, String> {
-        Ok(Value::Number((*self != rhs).into()))
+        Ok(Value::Integer((*self != rhs).into()))
     }
 
     pub fn less_than(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a < b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a < b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Integer((a < b).into())),
+            _ => Err("Operands of < operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn less_than_eq(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a <= b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a <= b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Integer((a <= b).into())),
+            _ => Err("Operands of <= operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn greater_than(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a > b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a > b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Integer((a > b).into())),
+            _ => Err("Operands of > operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn greater_than_eq(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a >= b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a >= b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Integer((a >= b).into())),
+            _ => Err("Operands of >= operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn add(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a + b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a + b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float((a + b).into())),
+            _ => Err("Operands of + operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn subtract(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a - b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a - b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float((a - b).into())),
+            _ => Err("Operands of - operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn multiply(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a * b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a * b).into())),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float((a * b).into())),
+            _ => Err("Operands of * operator have to be both integers or both floats".to_owned()),
+        }
     }
 
     pub fn divide(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        match b {
-            0 => Err("Cannot divide by 0".to_owned()),
-            _ => Ok(Value::Number((a / b).into())),
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => match b {
+                0 => Err("Cannot divide an integer by 0".to_owned()),
+                _ => Ok(Value::Integer((a / b).into())),
+            },
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float((a / b).into())),
+            _ => Err("Operands of / operator have to be both integers or both floats".to_owned()),
         }
     }
 
     pub fn modulo(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        match b {
-            0 => Err("Cannot divide by 0".to_owned()),
-            _ => Ok(Value::Number((a % b).into())),
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => match b {
+                0 => Err("Cannot divide an integer by 0".to_owned()),
+                _ => Ok(Value::Integer((a % b).into())),
+            },
+            _ => Err("Operands of % operator have to be both integers".to_owned()),
         }
     }
 
     pub fn and(&self, rhs: Value) -> Result<Value, String> {
         let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a & b).into()))
+        Ok(Value::Integer((a & b).into()))
     }
 
     pub fn or(&self, rhs: Value) -> Result<Value, String> {
         let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a | b).into()))
+        Ok(Value::Integer((a | b).into()))
     }
 
     pub fn not(&self) -> Result<Value, String> {
-        if let Value::Number(a) = self {
-            Ok(Value::Number(!a))
-        } else {
-            Err("operand for unary operator must be a number".to_string())
+        match self {
+            Value::Integer(a) => Ok(Value::Integer(!a)),
+            _ => Err("operand for not operator must be an integer".to_owned()),
         }
     }
 
     pub fn pow(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        let b: u32 = b.try_into().or(Err(
-            "in pow(): power must be nonnegative and within u32::MAX".to_string(),
-        ))?;
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => {
+                let b: u32 = (*b).try_into().or(Err(
+                    "in pow(): integer can only be raised to nonnegative power within u32::MAX"
+                        .to_string(),
+                ))?;
 
-        Ok(Value::Number(a.pow(b)))
+                Ok(Value::Integer(a.pow(b)))
+            }
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
+            _ => Err("Arguments to pow() have to be both integers of both floats".to_owned()),
+        }
     }
 }
 
@@ -371,9 +406,13 @@ impl<'b, 's> Interpreter<'b, 's> {
 
     fn eval_literal_token(&mut self, token: &Token) -> Result<Value, InterpreterError> {
         match self.get_token_type(token) {
-            TokenType::Number(num_str) => {
+            TokenType::Integer(num_str) => {
                 let num = num_str.parse::<i64>().unwrap();
-                Ok(Value::Number(num))
+                Ok(Value::Integer(num))
+            }
+            TokenType::Float(num_str) => {
+                let num = num_str.parse::<f64>().unwrap();
+                Ok(Value::Float(num))
             }
             TokenType::String(s) => Ok(Value::String(s.to_string())),
             _ => unreachable!(),
@@ -454,7 +493,7 @@ impl<'b, 's> Interpreter<'b, 's> {
 
         match self.get_token_type(operator) {
             TokenType::Not => operand_val.not(),
-            TokenType::Minus => operand_val.multiply(Value::Number(-1)),
+            TokenType::Minus => operand_val.multiply(Value::Integer(-1)),
             _ => unreachable!(),
         }
         .map_err(|e| self.error(e))
@@ -546,7 +585,7 @@ impl<'b, 's> Interpreter<'b, 's> {
         };
 
         let index = match self.eval(index, false)? {
-            Value::Number(n) => n,
+            Value::Integer(n) => n,
             v => return Err(self.error(format!("{} cannot be an index", v.describe_type()))),
         };
 

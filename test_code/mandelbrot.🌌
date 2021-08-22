@@ -1,19 +1,21 @@
 let maximum number of iterations := 255;
 
 func count mandelbrot iterations at point `x` `y` {
-	let center x := x / 200 - 2.5;
-	let center y := y / 200 - 1.0;
+	let center x := x / 200.0 - 2.5;
+	let center y := y / 200.0 - 1.0;
 
-	let real part of z := 0;
-	let imaginary part of z := 0;
+	let real part of z := 0.0;
+	let imaginary part of z := 0.0;
 
 	let iteration count := 0;
 
-	while re*re + im*im < 4 && iteration count < maximum number of iterations {
+	while re*re + im*im < 4.0 && iteration count < maximum number of iterations {
 		let new real part of z := re * re - im * im + center x;
-		let new imaginary part of z := 2 * re * im + center y;
+		let new imaginary part of z := 2.0 * re * im + center y;
 		re := new re;
 		im := new im;
+
+		iteration := iteration + 1;
 	}
 
 	return iteration count;
@@ -24,7 +26,7 @@ let y := 0;
 while y < 400 {
 	let x := 0;
 	while x < 700 {
-		if count mandelbrot iterations at (x, y) == maximum number of iterations {
+		if count mandelbrot iterations at (float(x), float(y)) == maximum number of iterations {
 			print("1 ");
 		} else {
 			print("0 ");
@@ -32,5 +34,5 @@ while y < 400 {
 		x := x + 1;
 	}
 	y := y + 1;
+	println();
 }
-println("");

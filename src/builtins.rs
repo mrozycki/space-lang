@@ -15,6 +15,8 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("print", print as BuiltinFunction),
         ("println", println as BuiltinFunction),
         ("length of", len as BuiltinFunction),
+        ("floating point cast", float as BuiltinFunction),
+        ("integer cast", integer as BuiltinFunction),
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -57,8 +59,40 @@ fn println(args: Vec<Value>) -> Result<Value, String> {
 
 fn len(arr: Vec<Value>) -> Result<Value, String> {
     match &arr.first() {
-        Some(Value::Array(inner)) => Ok(Value::Number(inner.borrow().len() as i64)),
-        Some(Value::String(inner)) => Ok(Value::Number(inner.len() as i64)),
-        _ => Err("builtin `len` requires an array or string type argument".to_owned()),
+        Some(Value::Array(inner)) => Ok(Value::Integer(inner.borrow().len() as i64)),
+        Some(Value::String(inner)) => Ok(Value::Integer(inner.len() as i64)),
+        _ => Err("builtin `length of` requires an array or string type argument".to_owned()),
+    }
+}
+
+fn float(args: Vec<Value>) -> Result<Value, String> {
+    match &args.first() {
+        Some(Value::Float(a)) => Ok(Value::Float(*a)),
+        Some(Value::Integer(a)) => Ok(Value::Float(*a as f64)),
+        Some(Value::String(a)) => Ok(Value::Float(a.parse::<f64>().map_err(|_| {
+            format!(
+                "Given string \"{}\" cannot be parsed as a floating point number",
+                a
+            )
+        })?)),
+        Some(a) => Err(format!("{} cannot be cast to float", a.describe_type())),
+        _ => Err(
+            "builtin `floating point cast` requires an integer, float or string argument"
+                .to_owned(),
+        ),
+    }
+}
+
+fn integer(args: Vec<Value>) -> Result<Value, String> {
+    match &args.first() {
+        Some(Value::Float(a)) => Ok(Value::Integer(*a as i64)),
+        Some(Value::Integer(a)) => Ok(Value::Integer(*a as i64)),
+        Some(Value::String(a)) => {
+            Ok(Value::Integer(a.parse::<i64>().map_err(|_| {
+                format!("Given string \"{}\" cannot be parsed as a integer", a)
+            })?))
+        }
+        Some(a) => Err(format!("{} cannot be cast to float", a.describe_type())),
+        _ => Err("builtin `integer cast` requires an integer, float or string argument".to_owned()),
     }
 }

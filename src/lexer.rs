@@ -12,7 +12,8 @@ pub enum TokenType {
     Assign,
     Semicolon,
     Comma,
-    Number(String),
+    Integer(String),
+    Float(String),
     String(String),
     Identifier(String, Vec<String>),
     Func,
@@ -256,8 +257,10 @@ impl<'a> Lexer<'a> {
             while self.peek().is_digit(10) {
                 value.push(self.advance());
             }
+            Ok(self.emit(TokenType::Float(value)))
+        } else {
+            Ok(self.emit(TokenType::Integer(value)))
         }
-        Ok(self.emit(TokenType::Number(value)))
     }
 
     fn consume_string(&mut self) -> Result<Token, LexerError> {
@@ -384,7 +387,7 @@ mod tests {
             Ok(vec![
                 TokenType::Identifier("Hello world ".to_owned(), Vec::new()),
                 TokenType::Assign,
-                TokenType::Number("5".to_owned()),
+                TokenType::Integer("5".to_owned()),
                 TokenType::Semicolon,
                 TokenType::Eof
             ])
@@ -400,7 +403,7 @@ mod tests {
             Ok(vec![
                 TokenType::Identifier("Hello, world! := 5 - 2 < 3".to_owned(), Vec::new()),
                 TokenType::Assign,
-                TokenType::Number("5".to_owned()),
+                TokenType::Integer("5".to_owned()),
                 TokenType::Semicolon,
                 TokenType::Eof
             ])
@@ -481,7 +484,7 @@ mod tests {
                 TokenType::Comma,
                 TokenType::Identifier("world ".to_owned(), Vec::new()),
                 TokenType::Assign,
-                TokenType::Number("42".to_owned()),
+                TokenType::Integer("42".to_owned()),
                 TokenType::Semicolon,
                 TokenType::Eof
             ])
@@ -498,7 +501,7 @@ mod tests {
                 TokenType::Let,
                 TokenType::Identifier("Hello, world!".to_owned(), Vec::new()),
                 TokenType::Assign,
-                TokenType::Number("42".to_owned()),
+                TokenType::Integer("42".to_owned()),
                 TokenType::Semicolon,
                 TokenType::Eof
             ])

@@ -99,6 +99,12 @@ print("Langjam", "0001", "\n");
 it can do arithmetic and logic;
 let Hello world := 2 + 2 * 2;
 
+it can do floating point numbers;
+let pi := 3.14;
+
+but if you want to mix it with integers you need explicit casts;
+let tau := pi * integer(2);
+
 it has mutable state;
 Hello world := 7;
 
@@ -134,10 +140,6 @@ println(the lost numbers);
 Yes, the entire above piece of code is a valid program.
 
 You can find more example in the [test_code](test_code/) directory.
-
-**Note:** the Mandelbrot program does not currently work, as floating
-point numbers are not supported. All the other programs should work without
-issues.
 
 
 Building and running
