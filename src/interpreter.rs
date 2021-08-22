@@ -170,8 +170,8 @@ impl Scope<'_> {
         let mut scope = self;
         loop {
             let mut matches = scope.functions.iter_prefix_str(ident);
-            let func = match matches.next() {
-                Some(v) => (v.1, scope),
+            let v = match matches.next() {
+                Some(v) => v,
                 None => {
                     if let Some(parent) = scope.parent_scope {
                         scope = parent;
@@ -182,14 +182,17 @@ impl Scope<'_> {
                 }
             };
 
-            if matches.next().is_some() {
+            for collision in matches {
+                if collision.0.as_str().starts_with(v.0.as_str()) {
+                    continue;
+                }
+
                 return Err(format!(
-                    "Use of the identifier `{}` is ambiguous, it could refer to more than one function",
-                    ident
+                    "use of the identifier `{}` is ambiguous, it could refer to `{}` and `{}`",
+                    ident, v.0.as_str(), collision.0.as_str()
                 ));
-            } else {
-                return Ok(func);
             }
+            return Ok((v.1, scope));
         }
     }
 
@@ -197,7 +200,7 @@ impl Scope<'_> {
         let mut scope = self;
         loop {
             let mut matches = scope.variables.iter_prefix_str(ident);
-            let var = match matches.next() {
+            let v = match matches.next() {
                 Some(v) => v,
                 None => {
                     if let Some(parent) = scope.parent_scope {
@@ -209,14 +212,17 @@ impl Scope<'_> {
                 }
             };
 
-            if matches.next().is_some() {
+            for collision in matches {
+                if collision.0.as_str().starts_with(v.0.as_str()) {
+                    continue;
+                }
+
                 return Err(format!(
-                    "Use of the identifier `{}` is ambiguous, it could refer to more than one variable",
-                    ident
+                    "use of the identifier `{}` is ambiguous, it could refer to `{}` and `{}`",
+                    ident, v.0.as_str(), collision.0.as_str()
                 ));
-            } else {
-                return Ok(var.1);
             }
+            return Ok(v.1);
         }
     }
 
@@ -596,14 +602,6 @@ impl<'b, 's> Interpreter<'b, 's> {
             match stmt {
                 Statement::Expression { expr } => {
                     self.eval(&expr, true)?;
-                }
-
-                Statement::Print { expr, newline } => {
-                    let mut str = self.eval(&expr, false)?.to_string();
-                    if *newline {
-                        str.push('\n')
-                    }
-                    print!("{}", str);
                 }
 
                 Statement::Definition { variable, value } => {

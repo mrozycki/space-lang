@@ -12,6 +12,8 @@ pub fn builtins() -> Trie<BString, Statement> {
     [
         ("pow", pow as BuiltinFunction),
         ("read line", read_line as BuiltinFunction),
+        ("print", print as BuiltinFunction),
+        ("println", println as BuiltinFunction),
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -35,4 +37,19 @@ fn read_line(_args: Vec<Value>) -> Result<Value, String> {
         .read_line(&mut buf)
         .map_err(|e| format!("in builtin `read line`: IO Error: {}", e))?;
     Ok(Value::String(buf))
+}
+
+fn print(args: Vec<Value>) -> Result<Value, String> {
+    for value in args {
+        print!("{}", value);
+    }
+    Ok(Value::Null)
+}
+
+fn println(args: Vec<Value>) -> Result<Value, String> {
+    for value in args {
+        print!("{}", value);
+    }
+    println!();
+    Ok(Value::Null)
 }

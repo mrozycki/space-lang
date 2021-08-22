@@ -42,10 +42,6 @@ pub enum Statement {
     Block {
         statements: Vec<Statement>,
     },
-    Print {
-        expr: Expression,
-        newline: bool,
-    },
     Definition {
         variable: Token,
         value: Expression,

@@ -105,13 +105,6 @@ impl Parser {
 
     pub fn statement(&mut self) -> Result<Statement, ParserError> {
         match self.tokens.peek().map(|t| &t.token_type) {
-            Some(TokenType::Identifier(name, _))
-                if name.trim_end() == "print" || name.trim_end() == "println" =>
-            {
-                let newline = name.trim_end() == "println";
-                self.tokens.next();
-                self.print_statement(newline)
-            }
             Some(TokenType::Let) => self.definition_statement(),
             Some(TokenType::If) => self.conditional_statement(),
             Some(TokenType::While) => self.loop_statement(),
@@ -122,18 +115,6 @@ impl Parser {
             Some(TokenType::Continue) => self.continue_statement(),
             Some(_) => self.expression_statement(),
             None => Err(self.error("Expected a statement")),
-        }
-    }
-
-    pub fn print_statement(&mut self, newline: bool) -> Result<Statement, ParserError> {
-        let expression = self.expression()?;
-        if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
-            Ok(Statement::Print {
-                expr: expression,
-                newline,
-            })
-        } else {
-            Err(self.error("Expected ';' at the end of print statement"))
         }
     }
 

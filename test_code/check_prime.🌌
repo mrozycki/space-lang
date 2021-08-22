@@ -7,8 +7,7 @@ if number < 2 {
 } else {
     let i the potential divisor := 2;
     while i*i <= number {
-        print("considering ");
-        println(i);
+        println("considering ", i);
         if number % i == 0 {
             prime := 0;
             break;
@@ -19,9 +18,7 @@ if number < 2 {
 }
 
 if prime {
-    print (number);
-    println (" is prime");
+    println(number, " is prime");
 } else {
-    print (number);
-    println (" is not prime");
+    println(number, " is not prime");
 }
