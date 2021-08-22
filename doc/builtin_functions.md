@@ -10,3 +10,4 @@ pow | Integer, Integer -> Integer | Raises the first argument to the power of th
 split string | String, String -> Array\<String\> | Splits the first argument using the second argument as the delimiter, returning an array of strings.
 floating point cast | (Integer \| Float \| String) -> Float | Casts a value to a float, by converting an integer or parsing a string.
 integer cast | (Integer \| Float \| String) -> Integer | Casts a value to an integer, by truncating a float or parsing a string.
+random integer | Void -> Integer | Returns a random integer from i64::MIN to i64::MAX.
