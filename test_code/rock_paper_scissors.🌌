@@ -31,7 +31,6 @@ while 1 {
 	}
 
 	let computer move := get computer move ();
-	println ();
 	print ("Computer picked: ");
 	print move (computer);
 	println (); 
