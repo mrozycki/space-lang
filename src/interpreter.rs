@@ -560,7 +560,13 @@ impl<'b, 's> Interpreter<'b, 's> {
         };
 
         let mut function_interpreter = Interpreter::new(call_scope, function_ast);
-        match function_interpreter.run() {
+        let result = function_interpreter.run();
+
+        if !function_interpreter.variable_exports.is_empty() || !function_interpreter.function_exports.is_empty() {
+            return Err(self.error("values/functions cannot be exported from within functions".to_string()));
+        }
+        
+        match result {
             Exec::Ok => Ok(Value::Null),
             Exec::Return(v) => Ok(v),
             Exec::Break => Err(self.error("break outside of a loop".to_owned())),
@@ -727,7 +733,13 @@ impl<'b, 's> Interpreter<'b, 's> {
                         loop_interpreter.line = self.line;
                         loop_interpreter.column = self.column;
 
-                        match loop_interpreter.run() {
+                        let result = loop_interpreter.run();
+
+                        if !loop_interpreter.variable_exports.is_empty() || !loop_interpreter.function_exports.is_empty() {
+                            return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
+                        }
+
+                        match result {
                             Exec::Break => break,
                             Exec::Continue => continue,
                             v => v?,
@@ -761,6 +773,10 @@ impl<'b, 's> Interpreter<'b, 's> {
                     if_interpreter.column = self.column;
 
                     if_interpreter.run()?;
+                    if !if_interpreter.variable_exports.is_empty() || !if_interpreter.function_exports.is_empty() {
+                        return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
+                    }
+
                 }
 
                 Statement::FunctionDefinition {
