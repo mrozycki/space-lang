@@ -89,6 +89,24 @@ func count down from a given `number` to 1 {
 count down from (10);
 ```
 
+Functions and values can be exported from a file, so they can be imported in other files:  
+```go
+`-- in file fruits.🌌 --`;
+
+export func is fruit checks if `word` is a fruit {
+	return word == "apple";
+}
+
+export number of fruits := 100;
+
+`-- in file main.🌌 -- `;
+
+import fruits;
+
+if is fruit ("apple") {
+	println ("I have ", number of fruits, " fruits");
+}
+```
 Other than that, Space is a simple imperative language with familiar constructs:
 
 ```go
