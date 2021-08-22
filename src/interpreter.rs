@@ -14,6 +14,9 @@ use std::{
 };
 use std::{fmt, path::PathBuf};
 
+// A list of file extensions space files may be in, used in import name resolution
+const SOURCE_FILE_EXTENSIONS: [&'static str; 4] = ["🌌", "space", "spc", "spce"];
+
 #[derive(Debug, PartialEq)]
 pub struct Map {
     trie: Trie<BString, Value>,
@@ -869,68 +872,69 @@ impl<'b, 's> Interpreter<'b, 's> {
     }
 
     fn import_module(&mut self, name: &String) -> Exec {
-        let mut path = PathBuf::new();
-        path.set_file_name(name);
-        path.set_extension("🌌");
+        let mut code = None;
 
-        match std::fs::read_to_string(path) {
-            Ok(code) => {
-                let lexer = Lexer::new(&code);
-                match lexer.into_tokens() {
-                    Ok(tokens) => {
-                        let parser = Parser::new(tokens);
-                        match parser.parse() {
-                            Ok(ast) => {
-                                let mut interpreter = Interpreter::with_ast(&ast);
-                                interpreter.run()?;
-
-                                for func in interpreter.function_exports {
-                                    match &func {
-                                        Statement::FunctionDefinition {
-                                            name,
-                                            parameters: _,
-                                            body: _,
-                                            export: _,
-                                        } => {
-                                            self.scope.functions.insert_str(name, func.clone());
-                                        }
-                                        _ => unreachable!(),
-                                    }
-                                }
-
-                                for stru in interpreter.struct_exports {
-                                    match &stru {
-                                        Statement::StructDefinition {
-                                            struct_type,
-                                            fields,
-                                            export: _,
-                                        } => {
-                                            self.scope.struct_defs.insert_str(
-                                                struct_type,
-                                                fields
-                                                    .iter()
-                                                    .map(|field| (BString::from(field.clone()), ()))
-                                                    .collect(),
-                                            );
-                                        }
-                                        _ => unreachable!(),
-                                    }
-                                }
-
-                                self.scope.variables.extend(interpreter.variable_exports);
-
-                                Exec::Ok
-                            }
-                            Err(e) => {
-                                Exec::Err(self.error(format!("Error parsing imported file: {}", e)))
-                            }
-                        }
-                    }
-                    Err(e) => Exec::Err(self.error(format!("Error lexing imported file: {}", e))),
-                }
+        for extension in SOURCE_FILE_EXTENSIONS {
+            let mut path = PathBuf::new();
+            path.set_file_name(name);
+            path.set_extension(extension);
+            match std::fs::read_to_string(path) {
+                Ok(c) => { code = Some(c); break },
+                Err(_) => continue
             }
-            Err(e) => Exec::Err(self.error(format!("Error reading imported file: {}", e))),
         }
+
+        if code.is_none() {
+            return Exec::Err(self.error(format!("Unable to find module named {}", name)));
+        }
+
+        let code = code.unwrap();
+        let lexer = Lexer::new(&code);
+        let tokens = lexer
+            .into_tokens()
+            .map_err(|e| self.error(format!("Error lexing imported file: {}", e)))?;
+        let parser = Parser::new(tokens);
+        let ast = parser
+            .parse()
+            .map_err(|e| self.error(format!("Error parsing imported file: {}", e)))?;
+        let mut interpreter = Interpreter::with_ast(&ast);
+        interpreter.run()?;
+
+        for func in interpreter.function_exports {
+            match &func {
+                Statement::FunctionDefinition {
+                    name,
+                    parameters: _,
+                    body: _,
+                    export: _,
+                } => {
+                    self.scope.functions.insert_str(name, func.clone());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        for stru in interpreter.struct_exports {
+            match &stru {
+                Statement::StructDefinition {
+                    struct_type,
+                    fields,
+                    export: _,
+                } => {
+                    self.scope.struct_defs.insert_str(
+                        struct_type,
+                        fields
+                            .iter()
+                            .map(|field| (BString::from(field.clone()), ()))
+                            .collect(),
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        self.scope.variables.extend(interpreter.variable_exports);
+        Exec::Ok
     }
 
     pub fn run(&mut self) -> Exec {
