@@ -116,12 +116,18 @@ impl Value {
 
     pub fn divide(&self, rhs: Value) -> Result<Value, String> {
         let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a / b).into()))
+        match b {
+            0 => Err("Cannot divide by 0".to_owned()),
+            _ => Ok(Value::Number((a / b).into())),
+        }
     }
 
     pub fn modulo(&self, rhs: Value) -> Result<Value, String> {
         let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Number((a % b).into()))
+        match b {
+            0 => Err("Cannot divide by 0".to_owned()),
+            _ => Ok(Value::Number((a % b).into())),
+        }
     }
 
     pub fn and(&self, rhs: Value) -> Result<Value, String> {
@@ -189,7 +195,9 @@ impl Scope<'_> {
 
                 return Err(format!(
                     "use of the identifier `{}` is ambiguous, it could refer to `{}` and `{}`",
-                    ident, v.0.as_str(), collision.0.as_str()
+                    ident,
+                    v.0.as_str(),
+                    collision.0.as_str()
                 ));
             }
             return Ok((v.1, scope));
@@ -219,7 +227,9 @@ impl Scope<'_> {
 
                 return Err(format!(
                     "use of the identifier `{}` is ambiguous, it could refer to `{}` and `{}`",
-                    ident, v.0.as_str(), collision.0.as_str()
+                    ident,
+                    v.0.as_str(),
+                    collision.0.as_str()
                 ));
             }
             return Ok(v.1);
