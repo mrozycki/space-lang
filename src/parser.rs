@@ -124,7 +124,7 @@ impl Parser {
     }
 
     pub fn expression_statement(&mut self) -> Result<Statement, ParserError> {
-        let expression = self.expression()?;
+        let expression = self.expression(true)?;
         if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
             Ok(Statement::Expression { expr: expression })
         } else {
@@ -146,7 +146,7 @@ impl Parser {
             .consume(vec![TokenType::Assign])
             .ok_or(self.error("Expected ':=' after variable name in definition"))?;
 
-        let initializer = self.expression()?;
+        let initializer = self.expression(true)?;
 
         self.tokens
             .consume(vec![TokenType::Semicolon])
@@ -171,7 +171,7 @@ impl Parser {
                 self.tokens
                     .consume(vec![TokenType::Assign])
                     .ok_or(self.error("Expected ':=' after name in export"))?;
-                let value = self.expression()?;
+                let value = self.expression(true)?;
 
                 self.tokens
                     .consume(vec![TokenType::Semicolon])
@@ -212,7 +212,7 @@ impl Parser {
             .consume(vec![TokenType::If])
             .ok_or(self.error("Expected 'if' keyword"))?;
 
-        let condition = self.expression()?;
+        let condition = self.expression(false)?;
         let if_true = Box::new(self.block()?);
 
         let if_false = if self
@@ -243,7 +243,7 @@ impl Parser {
             .consume(vec![TokenType::While])
             .ok_or(self.error("Expected 'while' keyword"))?;
 
-        let condition = self.expression()?;
+        let condition = self.expression(false)?;
         let body = Box::new(self.block()?);
         Ok(Statement::Loop { condition, body })
     }
@@ -297,7 +297,7 @@ impl Parser {
         if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
             Ok(Statement::Return { expression: None })
         } else {
-            let expression = self.expression()?;
+            let expression = self.expression(true)?;
 
             self.tokens
                 .consume(vec![TokenType::Semicolon])
@@ -350,15 +350,15 @@ impl Parser {
         Ok(Statement::Continue)
     }
 
-    fn expression(&mut self) -> Result<Expression, ParserError> {
-        self.assignment()
+    fn expression(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        self.assignment(allow_bare_structs)
     }
 
-    fn assignment(&mut self) -> Result<Expression, ParserError> {
-        let lvalue = self.logic_or()?;
+    fn assignment(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let lvalue = self.logic_or(allow_bare_structs)?;
 
         if let Some(..) = self.tokens.consume(vec![TokenType::Assign]) {
-            let rvalue = self.logic_or()?;
+            let rvalue = self.logic_or(allow_bare_structs)?;
             Ok(Expression::Assignment {
                 target: Box::new(lvalue),
                 value: Box::new(rvalue),
@@ -368,11 +368,11 @@ impl Parser {
         }
     }
 
-    fn logic_or(&mut self) -> Result<Expression, ParserError> {
-        let mut expr = self.logic_and()?;
+    fn logic_or(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expr = self.logic_and(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![TokenType::Or]) {
-            let right = self.logic_and()?;
+            let right = self.logic_and(allow_bare_structs)?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -383,11 +383,11 @@ impl Parser {
         Ok(expr)
     }
 
-    fn logic_and(&mut self) -> Result<Expression, ParserError> {
-        let mut expr = self.equality()?;
+    fn logic_and(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expr = self.equality(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![TokenType::And]) {
-            let right = self.equality()?;
+            let right = self.equality(allow_bare_structs)?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -398,14 +398,14 @@ impl Parser {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<Expression, ParserError> {
-        let mut expr = self.comparison()?;
+    fn equality(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expr = self.comparison(allow_bare_structs)?;
 
         while let Some(operator) = self
             .tokens
             .consume(vec![TokenType::NotEqual, TokenType::Equal])
         {
-            let right = self.comparison()?;
+            let right = self.comparison(allow_bare_structs)?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -416,8 +416,8 @@ impl Parser {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expression, ParserError> {
-        let mut expr = self.term()?;
+    fn comparison(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expr = self.term(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![
             TokenType::LessThan,
@@ -425,7 +425,7 @@ impl Parser {
             TokenType::GreaterThan,
             TokenType::GreaterThanOrEqual,
         ]) {
-            let right = self.term()?;
+            let right = self.term(allow_bare_structs)?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -436,11 +436,11 @@ impl Parser {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expression, ParserError> {
-        let mut expr = self.factor()?;
+    fn term(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expr = self.factor(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![TokenType::Plus, TokenType::Minus]) {
-            let right = self.factor()?;
+            let right = self.factor(allow_bare_structs)?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -451,14 +451,14 @@ impl Parser {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expression, ParserError> {
-        let mut expr = self.unary()?;
+    fn factor(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expr = self.unary(allow_bare_structs)?;
 
         while let Some(operator) =
             self.tokens
                 .consume(vec![TokenType::Star, TokenType::Slash, TokenType::Modulo])
         {
-            let right = self.unary()?;
+            let right = self.unary(allow_bare_structs)?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -469,19 +469,23 @@ impl Parser {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expression, ParserError> {
+    fn unary(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
         if let Some(operator) = self.tokens.consume(vec![TokenType::Minus, TokenType::Not]) {
             Ok(Expression::UnaryOp {
-                right: Box::new(self.postfix()?),
+                right: Box::new(self.postfix(allow_bare_structs)?),
                 operator,
             })
         } else {
-            self.postfix()
+            self.postfix(allow_bare_structs)
         }
     }
 
-    fn postfix(&mut self) -> Result<Expression, ParserError> {
-        let mut expression = self.struct_literal()?;
+    fn postfix(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+        let mut expression = if allow_bare_structs {
+            self.struct_literal()?
+        } else {
+            self.primary()?
+        };
 
         while let Some(tok) = self.tokens.peek() {
             match tok.token_type {
@@ -493,7 +497,7 @@ impl Parser {
                         .peek()
                         .map_or(false, |tok| tok.token_type != TokenType::RightParen)
                     {
-                        arguments.push(self.expression()?);
+                        arguments.push(self.expression(true)?);
                         if let None = self.tokens.consume(vec![TokenType::Comma]) {
                             break;
                         }
@@ -508,7 +512,7 @@ impl Parser {
                 }
                 TokenType::LeftSquare => {
                     self.tokens.next();
-                    let index = self.expression()?;
+                    let index = self.expression(true)?;
                     self.tokens
                         .consume(vec![TokenType::RightSquare])
                         .ok_or(self.error("Expected ']' at the end of the array access"))?;
@@ -585,7 +589,7 @@ impl Parser {
                     .ok_or(self.error("Expected ':=' after a field identifier"))?;
 
                 let field_value = self
-                    .expression()
+                    .expression(true)
                     .map_err(|_| self.error("Expected a value for a field"))?;
 
                 fields.insert(field_name, field_value);
@@ -619,7 +623,7 @@ impl Parser {
         {
             Ok(Expression::Variable { name: identifier })
         } else if let Some(..) = self.tokens.consume(vec![TokenType::LeftParen]) {
-            let expr = self.expression()?;
+            let expr = self.expression(true)?;
             if let Some(..) = self.tokens.consume(vec![TokenType::RightParen]) {
                 Ok(expr)
             } else {
@@ -632,7 +636,7 @@ impl Parser {
                 .peek()
                 .map_or(false, |tok| tok.token_type != TokenType::RightSquare)
             {
-                elements.push(self.expression()?);
+                elements.push(self.expression(true)?);
                 if let None = self.tokens.consume(vec![TokenType::Comma]) {
                     break;
                 }

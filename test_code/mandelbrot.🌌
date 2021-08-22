@@ -1,20 +1,36 @@
 let maximum number of iterations := 255;
 
-func count mandelbrot iterations at point `x` `y` {
-	let center x := x / 200.0 - 2.5;
-	let center y := y / 200.0 - 1.0;
+struct complex number has a `real part` and an `imaginary part`;
 
-	let real part of z := 0.0;
-	let imaginary part of z := 0.0;
+func square a complex number `z` {
+	return complex number {
+		re := z.re * z.re - z.im * z.im,
+		im := 2.0 * z.re * z.im
+	};
+}
+
+func add complex numbers `z1` and `z2` {
+	return complex number {
+		re := z1.re + z2.re,
+		im := z1.im + z2.im
+	};
+}
+
+func magnitude squared of complex number `z` {
+	return z.re * z.re + z.im * z.im;
+}
+
+func count mandelbrot iterations at point `x` `y` {
+	let center := complex { 
+		re := x / 200.0 - 2.5,
+		im := y / 200.0 - 1.0,
+	};
+
+	let z := complex { re := 0.0, im := 0.0 };
 
 	let iteration count := 0;
-
-	while re*re + im*im < 4.0 && iteration count < maximum number of iterations {
-		let new real part of z := re * re - im * im + center x;
-		let new imaginary part of z := 2.0 * re * im + center y;
-		re := new re;
-		im := new im;
-
+	while magnitude squared of (z) < 4.0 && iteration count < maximum number of iterations {
+		z := add(square(z), center);
 		iteration := iteration + 1;
 	}
 
