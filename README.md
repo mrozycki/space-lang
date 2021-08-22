@@ -89,24 +89,6 @@ func count down from a given `number` to 1 {
 count down from (10);
 ```
 
-Functions and values can be exported from a file, so they can be imported in other files:  
-```go
-`-- in file fruits.🌌 --`;
-
-export func is fruit checks if `word` is a fruit {
-	return word == "apple";
-}
-
-export number of fruits := 100;
-
-`-- in file main.🌌 -- `;
-
-import fruits;
-
-if is fruit ("apple") {
-	println ("I have ", number of fruits, " fruits");
-}
-```
 Other than that, Space is a simple imperative language with familiar constructs:
 
 ```go
@@ -153,9 +135,44 @@ while i < length of (the lost numbers) {
 or you can just print the whole array at once;
 it will be prettier too;
 println(the lost numbers); 
+
+it has structures but no methods;
+struct complex number has a `real part` and an `imaginary part`;
+
+func square a complex number `z` {
+	return complex number {
+		re := z.re * z.re + z.im * z.im,
+		im := 2.0 * z.re * z.im,
+	};
+}
+
+let z := complex { re := 2.0, im := -1.5 };
+let z squared := square (z);
+println("z^2 = ", z squared.re, "+", z squared.im, "i");
 ```
 
 Yes, the entire above piece of code is a valid program.
+
+We even have simple modules! Functions and values can be exported from a file, 
+so they can be imported in other files:  
+
+```go
+`-- in file fruits.🌌 --`;
+
+export func is fruit checks if `word` is a fruit {
+	return word == "apple";
+}
+
+export number of fruits := 100;
+
+`-- in file main.🌌 -- `;
+
+import fruits;
+
+if is fruit ("apple") {
+	println ("I have ", number of fruits, " fruits");
+}
+```
 
 You can find more example in the [test_code](test_code/) directory.
 
