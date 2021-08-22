@@ -163,11 +163,16 @@ impl Parser {
             .consume(vec![TokenType::Export])
             .ok_or(self.error("Expected 'export' keyword"))?;
 
-        match self
-            .tokens
-            .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
-        {
-            Some(name) => {
+        match self.tokens.peek().map(|t| &t.token_type) {
+            Some(TokenType::Identifier(_, args)) => {
+                if args.len() > 0 {
+                    return Err(self.error("export statement identifier may not contain backtick arguments"));
+                }
+
+                let name = self
+                    .tokens
+                    .consume(vec![TokenType::Identifier(String::new(), Vec::new())]).unwrap();
+
                 self.tokens
                     .consume(vec![TokenType::Assign])
                     .ok_or(self.error("Expected ':=' after name in export"))?;
@@ -177,48 +182,36 @@ impl Parser {
                     .consume(vec![TokenType::Semicolon])
                     .ok_or(self.error("Expected ';' at the end of an export statement"))?;
 
-                Ok(Statement::ExportVariable { name, value })
-            }
-            None => match self.tokens.consume(vec![TokenType::Struct]) {
-                Some(_) => {
-                    if let Some(Token {
-                        token_type: TokenType::Identifier(struct_type, fields),
-                        ..
-                    }) = self.tokens.next()
-                    {
-                        self.tokens
-                            .consume(vec![TokenType::Semicolon])
-                            .ok_or(self.error("Expected ';' at the end of return statement"))?;
-
-                        Ok(Statement::StructDefinition {
-                            struct_type,
-                            fields,
-                            export: true,
-                        })
-                    } else {
-                        Err(self.error("Expected a struct definition after `struct` keyword"))
-                    }
-                }
-                None => {
-                    let func = self.function_definition().or(Err(
-                            self.error("Expected function definition, struct definition or an identifier after 'export' keyword")
-                        ))?;
-                    match func {
-                        Statement::FunctionDefinition {
-                            name,
-                            parameters,
-                            body,
-                            export: _,
-                        } => Ok(Statement::FunctionDefinition {
-                            name,
-                            parameters,
-                            body,
-                            export: true,
-                        }),
-                        _ => unreachable!(),
-                    }
+                return Ok(Statement::ExportVariable { name, value });
+            },
+            Some(TokenType::Func) => {
+                match self.function_definition()? {
+                    Statement::FunctionDefinition {
+                        name,
+                        parameters,
+                        body,
+                        export: _,
+                    } => Ok(Statement::FunctionDefinition {
+                        name,
+                        parameters,
+                        body,
+                        export: true,
+                    }),
+                    _ => unreachable!(),
                 }
             },
+
+            Some(TokenType::Struct) => {
+                match self.struct_definition()? {
+                    Statement::StructDefinition { struct_type, fields, export: _ } => {
+                        return Ok(Statement::StructDefinition {
+                            struct_type, fields, export: true
+                        });
+                    }
+                    _ => unreachable!(),
+                }
+            },
+            _ => return Err(self.error("Expected function definition, struct definition or an identifier after 'export' keyword"))
         }
     }
 
