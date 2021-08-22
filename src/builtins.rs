@@ -21,7 +21,7 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("integer cast", integer as BuiltinFunction),
         ("split string", split_string as BuiltinFunction),
         ("random integer", random_integer as BuiltinFunction),
-        ("get char in string", get_char_in_string as BuiltinFunction)
+        ("get char in string", get_char_in_string as BuiltinFunction),
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -75,7 +75,7 @@ fn float(args: Vec<Value>) -> Result<Value, String> {
     match &args.first() {
         Some(Value::Float(a)) => Ok(Value::Float(*a)),
         Some(Value::Integer(a)) => Ok(Value::Float(*a as f64)),
-        Some(Value::String(a)) => Ok(Value::Float(a.parse::<f64>().map_err(|_| {
+        Some(Value::String(a)) => Ok(Value::Float(a.trim().parse::<f64>().map_err(|_| {
             format!(
                 "Given string \"{}\" cannot be parsed as a floating point number",
                 a
@@ -94,7 +94,7 @@ fn integer(args: Vec<Value>) -> Result<Value, String> {
         Some(Value::Float(a)) => Ok(Value::Integer(*a as i64)),
         Some(Value::Integer(a)) => Ok(Value::Integer(*a as i64)),
         Some(Value::String(a)) => {
-            Ok(Value::Integer(a.parse::<i64>().map_err(|_| {
+            Ok(Value::Integer(a.trim().parse::<i64>().map_err(|_| {
                 format!("Given string \"{}\" cannot be parsed as a integer", a)
             })?))
         }
