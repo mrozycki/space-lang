@@ -67,6 +67,8 @@ pub enum Statement {
     Return {
         expression: Option<Expression>,
     },
+    Break,
+    Continue,
     CallBuiltin {
         function: crate::builtins::BuiltinFunction,
     },

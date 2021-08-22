@@ -9,7 +9,8 @@ use qp_trie::{wrapper::BString, Trie};
 use std::fmt;
 use std::{
     cell::RefCell,
-    convert::{TryFrom, TryInto},
+    convert::{Infallible, TryFrom, TryInto},
+    ops::{ControlFlow, FromResidual, Try},
 };
 
 #[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
@@ -18,7 +19,6 @@ pub enum Value {
     String(String),
     Array(Gc<GcCell<Vec<Value>>>),
     Null,
-    Void,
 }
 
 impl Default for Value {
@@ -34,7 +34,6 @@ impl fmt::Display for Value {
             Value::String(s) => f.write_str(s),
             Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
             Value::Null => f.write_str("<NULL>"),
-            Value::Void => f.write_str("<VOID>"),
         }
     }
 }
@@ -46,7 +45,6 @@ impl Value {
             Value::String(s) => s.len() > 0,
             Value::Array(a) => a.borrow().len() > 0,
             Value::Null => false,
-            Value::Void => false,
         }
     }
 
@@ -56,7 +54,6 @@ impl Value {
             Value::String(_) => "a string",
             Value::Array(_) => "an array",
             Value::Null => "NULL",
-            Value::Void => unreachable!(),
         }
     }
 
@@ -281,6 +278,51 @@ pub struct Interpreter<'b, 's> {
     column: usize,
 }
 
+/// Represents all events that need to be bubbled-up during interpretation:
+/// - errors
+/// - returns
+/// - breaks
+/// - continues
+#[must_use]
+pub enum Exec {
+    Ok,
+    Return(Value),
+    Break,
+    Continue,
+    Err(InterpreterError),
+}
+
+impl Try for Exec {
+    type Output = ();
+    type Residual = Self;
+
+    fn from_output(_: ()) -> Self {
+        Exec::Ok
+    }
+
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Exec::Ok => ControlFlow::Continue(()),
+            v => ControlFlow::Break(v),
+        }
+    }
+}
+
+impl FromResidual for Exec {
+    fn from_residual(residual: Exec) -> Self {
+        residual
+    }
+}
+
+impl FromResidual<Result<Infallible, InterpreterError>> for Exec {
+    fn from_residual(residual: Result<Infallible, InterpreterError>) -> Self {
+        match residual {
+            Ok(a) => match a {},
+            Err(e) => Exec::Err(e),
+        }
+    }
+}
+
 impl<'b, 's> Interpreter<'b, 's> {
     pub fn new(mut scope: Scope<'s>, ast: &'b [Statement]) -> Self {
         scope.add_functions_from_ast(ast);
@@ -466,7 +508,13 @@ impl<'b, 's> Interpreter<'b, 's> {
         };
 
         let mut function_interpreter = Interpreter::new(call_scope, function_ast);
-        function_interpreter.run()
+        match function_interpreter.run() {
+            Exec::Ok => Ok(Value::Null),
+            Exec::Return(v) => Ok(v),
+            Exec::Break => Err(self.error("break outside of a loop".to_owned())),
+            Exec::Continue => Err(self.error("continue outside of a loop".to_owned())),
+            Exec::Err(e) => Err(e),
+        }
     }
 
     fn with_arrayref<R>(
@@ -543,7 +591,7 @@ impl<'b, 's> Interpreter<'b, 's> {
         }
     }
 
-    pub fn run(&mut self) -> Result<Value, InterpreterError> {
+    pub fn run(&mut self) -> Exec {
         for stmt in self.body {
             match stmt {
                 Statement::Expression { expr } => {
@@ -561,13 +609,13 @@ impl<'b, 's> Interpreter<'b, 's> {
                 Statement::Definition { variable, value } => {
                     if let TokenType::Identifier(ident, args) = self.get_token_type(&variable) {
                         if args.len() != 0 {
-                            return Err(self.error(
+                            return Exec::Err(self.error(
                                 "variable identifiers cannot contain backtick arguments".to_owned(),
                             ));
                         }
 
                         if self.scope.is_var_defined(&ident) {
-                            return Err(self.error(format!(
+                            return Exec::Err(self.error(format!(
                                 "attempt to redefine already defined variable `{}`",
                                 ident
                             )));
@@ -590,10 +638,11 @@ impl<'b, 's> Interpreter<'b, 's> {
                         loop_interpreter.line = self.line;
                         loop_interpreter.column = self.column;
 
-                        match loop_interpreter.run()? {
-                            Value::Void => (),
-                            x => return Ok(x),
-                        };
+                        match loop_interpreter.run() {
+                            Exec::Break => break,
+                            Exec::Continue => continue,
+                            v => v?,
+                        }
                     }
                 }
 
@@ -622,10 +671,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                     if_interpreter.line = self.line;
                     if_interpreter.column = self.column;
 
-                    match if_interpreter.run()? {
-                        Value::Void => (),
-                        x => return Ok(x),
-                    };
+                    if_interpreter.run()?;
                 }
 
                 Statement::FunctionDefinition {
@@ -635,16 +681,19 @@ impl<'b, 's> Interpreter<'b, 's> {
                 } => (),
                 Statement::Block { statements: _ } => (),
                 Statement::Return { expression } => {
-                    return match expression {
-                        Some(e) => self.eval(e, false),
-                        None => Ok(Value::Null),
-                    }
-                }
+                    let value = match expression {
+                        Some(e) => self.eval(e, false)?,
+                        None => Value::Null,
+                    };
 
+                    return Exec::Return(value);
+                }
+                Statement::Break => return Exec::Break,
+                Statement::Continue => return Exec::Continue,
                 Statement::CallBuiltin { function: _ } => unreachable!(),
             }
         }
 
-        Ok(Value::Void)
+        Exec::Ok
     }
 }

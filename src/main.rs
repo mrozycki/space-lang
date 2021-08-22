@@ -1,3 +1,4 @@
+#![feature(try_trait_v2)]
 mod ast;
 mod builtins;
 mod interpreter;
@@ -9,7 +10,7 @@ use std::{
     io::{self, Read, Result},
 };
 
-use interpreter::Interpreter;
+use interpreter::{Interpreter, Exec};
 use lexer::Lexer;
 use parser::Parser;
 
@@ -22,8 +23,11 @@ fn process(code: &str) {
                 Ok(expression) => {
                     let mut interpreter = Interpreter::with_ast(&expression);
                     match interpreter.run() {
-                        Err(e) => eprintln!("Interpreter error: {}", e),
-                        _ => (),
+                        Exec::Err(e) => eprintln!("Interpreter error: {}", e),
+                        Exec::Return(_) => eprintln!("return outside of a function"),
+                        Exec::Break => eprintln!("break outside of a loop"),
+                        Exec::Continue => eprintln!("continue outside of a loop"),
+                        Exec::Ok => (),
                     }
                 }
                 Err(e) => eprintln!("Parser error: {}", e),

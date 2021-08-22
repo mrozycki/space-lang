@@ -1,4 +1,4 @@
-let number to check := 13;
+let number to check := 1001;
 
 let prime check := 1;
 
@@ -6,9 +6,12 @@ if number < 2 {
     prime := 0;
 } else {
     let i the potential divisor := 2;
-    while i <= number / 2 {
+    while i*i <= number {
+        print("considering ");
+        println(i);
         if number % i == 0 {
             prime := 0;
+            break;
         }
         
         i := i + 1;

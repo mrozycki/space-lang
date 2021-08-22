@@ -118,6 +118,8 @@ impl Parser {
             Some(TokenType::LeftParen) => self.block(),
             Some(TokenType::Func) => self.function_definition(),
             Some(TokenType::Return) => self.return_statement(),
+            Some(TokenType::Break) => self.break_statement(),
+            Some(TokenType::Continue) => self.continue_statement(),
             Some(_) => self.expression_statement(),
             None => Err(self.error("Expected a statement")),
         }
@@ -255,9 +257,7 @@ impl Parser {
     }
 
     pub fn return_statement(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::Return])
-            .ok_or(self.error("Expected 'return'"))?;
+        self.tokens.consume(vec![TokenType::Return]).unwrap();
 
         if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
             Ok(Statement::Return { expression: None })
@@ -272,6 +272,26 @@ impl Parser {
                 expression: Some(expression),
             })
         }
+    }
+
+    pub fn break_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens.consume(vec![TokenType::Break]).unwrap();
+
+        self.tokens
+            .consume(vec![TokenType::Semicolon])
+            .ok_or(self.error("Expected ';' after 'break'"))?;
+
+        Ok(Statement::Break)
+    }
+
+    pub fn continue_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens.consume(vec![TokenType::Continue]).unwrap();
+
+        self.tokens
+            .consume(vec![TokenType::Semicolon])
+            .ok_or(self.error("Expected ';' after 'continue'"))?;
+
+        Ok(Statement::Continue)
     }
 
     fn expression(&mut self) -> Result<Expression, ParserError> {
