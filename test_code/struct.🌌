@@ -10,5 +10,8 @@ func square `z, a complex number` {
 let z := complex { re := 2.0, im := -1.0 };
 println("Complex number z = ", z.re, "+", z.im, "i");
 
+z.re := 4.0;
+println("Complex number z = ", z.re, "+", z.im, "i");
+
 let z squared := square(z);
 println("Its square = ", z squared.re, "+", z squared.im, "i");

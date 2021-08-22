@@ -14,12 +14,27 @@ use std::{
 };
 use std::{fmt, path::PathBuf};
 
+#[derive(Debug, PartialEq)]
+pub struct Map {
+    trie: Trie<BString, Value>,
+}
+
+impl Finalize for Map {}
+unsafe impl Trace for Map {
+    gc::custom_trace!(this, {
+        for (_, v) in this.trie.iter() {
+            mark(v);
+        }
+    });
+}
+
 #[derive(Debug, Clone, Trace, Finalize, PartialEq)]
 pub enum Value {
     Integer(i64),
     Float(f64),
     String(String),
     Array(Gc<GcCell<Vec<Value>>>),
+    Struct(String, Gc<GcCell<Map>>),
     Null,
 }
 
@@ -36,6 +51,17 @@ impl fmt::Display for Value {
             Value::Float(n) => write!(f, "{}", n),
             Value::String(s) => f.write_str(s),
             Value::Array(a) => write!(f, "[{}]", a.borrow().iter().join_with(", ")),
+            Value::Struct(name, values) => write!(
+                f,
+                "{} {{{}}}",
+                name,
+                values
+                    .borrow()
+                    .trie
+                    .iter()
+                    .map(|(a, b)| format!("{} := {}", a.as_str(), b))
+                    .join_with(", ")
+            ),
             Value::Null => f.write_str("<NULL>"),
         }
     }
@@ -48,17 +74,19 @@ impl Value {
             Value::Float(n) => *n != 0.0,
             Value::String(s) => s.len() > 0,
             Value::Array(a) => a.borrow().len() > 0,
+            Value::Struct(..) => true,
             Value::Null => false,
         }
     }
 
-    pub fn describe_type(&self) -> &'static str {
+    pub fn describe_type(&self) -> String {
         match self {
-            Value::Integer(_) => "an integer",
-            Value::Float(_) => "a floating point number",
-            Value::String(_) => "a string",
-            Value::Array(_) => "an array",
-            Value::Null => "NULL",
+            Value::Integer(_) => "an integer".to_owned(),
+            Value::Float(_) => "a floating point number".to_owned(),
+            Value::String(_) => "a string".to_owned(),
+            Value::Array(_) => "an array".to_owned(),
+            Value::Struct(name, _) => format!("a struct of type {}", name),
+            Value::Null => "NULL".to_owned(),
         }
     }
 
@@ -170,6 +198,14 @@ impl Value {
         }
     }
 
+    pub fn negate(&self) -> Result<Value, String> {
+        match self {
+            Value::Integer(a) => Ok(Value::Integer(-a)),
+            Value::Float(a) => Ok(Value::Float(-a)),
+            _ => Err("Operand of unary '-' operator must be an integer or a float".to_owned()),
+        }
+    }
+
     pub fn pow(&self, rhs: Value) -> Result<Value, String> {
         match (self, &rhs) {
             (Value::Integer(a), Value::Integer(b)) => {
@@ -186,7 +222,7 @@ impl Value {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scope<'s> {
     parent_scope: Option<&'s Scope<'s>>,
     variables: Trie<BString, RefCell<Value>>,
@@ -448,6 +484,11 @@ impl<'b, 's> Interpreter<'b, 's> {
                     })
                 })?;
             }
+            Expression::StructFieldRef { target, field_name } => {
+                self.with_struct_field_ref(target, field_name, |field_value| {
+                    *field_value = value.clone();
+                })?;
+            }
             _ => todo!(),
         }
         Ok(value)
@@ -490,7 +531,7 @@ impl<'b, 's> Interpreter<'b, 's> {
 
         match self.get_token_type(operator) {
             TokenType::Not => operand_val.not(),
-            TokenType::Minus => operand_val.multiply(Value::Integer(-1)),
+            TokenType::Minus => operand_val.negate(),
             _ => unreachable!(),
         }
         .map_err(|e| self.error(e))
@@ -618,6 +659,33 @@ impl<'b, 's> Interpreter<'b, 's> {
             })
     }
 
+    fn with_struct_field_ref<R>(
+        &mut self,
+        r#struct: &Expression,
+        field_name: &String,
+        f: impl FnOnce(&mut Value) -> R,
+    ) -> Result<R, InterpreterError> {
+        let target = self.eval(r#struct, false)?;
+
+        if let Value::Struct(name, fields) = &target {
+            if let Some((_, value)) = fields
+                .borrow_mut()
+                .trie
+                .iter_prefix_mut_str(field_name)
+                .next()
+            {
+                Ok(f(value))
+            } else {
+                Err(self.error(format!(
+                    "Struct {} does not contain field {}",
+                    name, field_name,
+                )))
+            }
+        } else {
+            Err(self.error(format!("Cannot get a field of {}", target.describe_type())))
+        }
+    }
+
     fn eval(&mut self, expr: &Expression, value_ignored: bool) -> Result<Value, InterpreterError> {
         match expr {
             Expression::Literal { value } => self.eval_literal_token(value),
@@ -645,6 +713,35 @@ impl<'b, 's> Interpreter<'b, 's> {
             Expression::ArrayRef { array, index } => {
                 self.with_arrayref(array, index, |arr, i| arr.borrow().get(i).cloned())
             }
+            Expression::StructLiteral {
+                struct_type,
+                fields,
+            } => {
+                if value_ignored {
+                    for (_, value) in fields.iter() {
+                        self.eval(value, value_ignored)?;
+                    }
+                    Ok(Default::default())
+                } else {
+                    let fields = fields
+                        .into_iter()
+                        .map(|(name, value)| {
+                            Ok((
+                                BString::from(name.clone()),
+                                self.eval(value, value_ignored)?,
+                            ))
+                        })
+                        .collect::<Result<Trie<_, _>, _>>()?;
+
+                    Ok(Value::Struct(
+                        struct_type.clone(),
+                        Gc::new(GcCell::new(Map { trie: fields })),
+                    ))
+                }
+            }
+            Expression::StructFieldRef { target, field_name } => {
+                self.with_struct_field_ref(target, field_name, |field_value| field_value.clone())
+            }
             Expression::Assignment { target, value } => self.eval_assignment(target, value),
             Expression::BinaryOp {
                 operator,
@@ -655,7 +752,6 @@ impl<'b, 's> Interpreter<'b, 's> {
             Expression::FunctionCall { callee, arguments } => {
                 self.eval_functioncall(callee, arguments)
             }
-            _ => todo!(),
         }
     }
 
@@ -857,7 +953,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                 Statement::Break => return Exec::Break,
                 Statement::Continue => return Exec::Continue,
                 Statement::CallBuiltin { function: _ } => unreachable!(),
-                _ => todo!(),
+                Statement::StructDefinition { .. } => (),
             }
         }
 
