@@ -65,6 +65,17 @@ the line below prints 42;
 println(Hello); 
 ```
 
+It is important to remember that backticks are not part of the identifier name, 
+they just act as markers:
+
+```go
+let `Hello, world!` := 42;
+println(Hello); prints 42;
+
+let fizz buzz := 15;
+println(`fizz`); prints 15;
+```
+
 When defining a function, you can embed parameter names within the function
 name with backticks:
 
@@ -82,7 +93,8 @@ Other than that, Space is a simple imperative language with familiar constructs:
 
 ```go
 it can print stuff;
-print("Hello!");
+println("Hello!");
+print("Langjam", "0001", "\n");
 
 it can do arithmetic and logic;
 let Hello world := 2 + 2 * 2;
@@ -92,11 +104,11 @@ Hello world := 7;
 
 it has conditional statements;
 if 2 > 1 {
-	print("Surely");
+	println("Surely");
 } else if 0 != 0 {
-	print("No way!");
+	println("No way!");
 } else {
-	print("Huh?");
+	println("Huh?");
 }
 
 it has while loops;
@@ -105,7 +117,21 @@ while i < 10 {
 	println(i);
 	i := i + 1;
 }
+
+it has arrays;
+let the lost numbers := [4, 8, 15, 16, 23, 42,]; comma at the end is allowed;
+i := 0;
+while i < length of (the lost numbers) {
+	println(the lost numbers[i]);
+	i := i+1;
+}
+
+or you can just print the whole array at once;
+it will be prettier too;
+println(the lost numbers); 
 ```
+
+Yes, the entire above piece of code is a valid program.
 
 You can find more example in the [test_code](test_code/) directory.
 
