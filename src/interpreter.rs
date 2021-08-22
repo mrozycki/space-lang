@@ -63,18 +63,6 @@ impl Value {
 
     // Operator impls:
 
-    fn get_numbers_binop(&self, rhs: Value) -> Result<(i64, i64), String> {
-        if let Value::Integer(a) = self {
-            if let Value::Integer(b) = rhs {
-                Ok((*a, b))
-            } else {
-                Err("RHS Value in binary operator must be a number".to_string())
-            }
-        } else {
-            Err("LHS Value in binary operator must be a number".to_string())
-        }
-    }
-
     pub fn equal(&self, rhs: Value) -> Result<Value, String> {
         Ok(Value::Integer((*self == rhs).into()))
     }
@@ -161,19 +149,23 @@ impl Value {
     }
 
     pub fn and(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Integer((a & b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a & b).into())),
+            _ => Err("Operands of & operator have to be both integers".to_owned()),
+        }
     }
 
     pub fn or(&self, rhs: Value) -> Result<Value, String> {
-        let (a, b) = self.get_numbers_binop(rhs)?;
-        Ok(Value::Integer((a | b).into()))
+        match (self, &rhs) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer((a | b).into())),
+            _ => Err("Operands of | operator have to be both integers".to_owned()),
+        }
     }
 
     pub fn not(&self) -> Result<Value, String> {
         match self {
             Value::Integer(a) => Ok(Value::Integer(!a)),
-            _ => Err("operand for not operator must be an integer".to_owned()),
+            _ => Err("Operand of ! operator must be an integer".to_owned()),
         }
     }
 
