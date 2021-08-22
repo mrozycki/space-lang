@@ -14,6 +14,7 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("read line", read_line as BuiltinFunction),
         ("print", print as BuiltinFunction),
         ("println", println as BuiltinFunction),
+        ("length of", len as BuiltinFunction),
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -52,4 +53,12 @@ fn println(args: Vec<Value>) -> Result<Value, String> {
     }
     println!();
     Ok(Value::Null)
+}
+
+fn len(arr: Vec<Value>) -> Result<Value, String> {
+    match &arr.first() {
+        Some(Value::Array(inner)) => Ok(Value::Number(inner.borrow().len() as i64)),
+        Some(Value::String(inner)) => Ok(Value::Number(inner.len() as i64)),
+        _ => Err("builtin `len` requires an array or string type argument".to_owned()),
+    }
 }
