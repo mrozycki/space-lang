@@ -227,6 +227,7 @@ pub struct Scope<'s> {
     parent_scope: Option<&'s Scope<'s>>,
     variables: Trie<BString, RefCell<Value>>,
     functions: Trie<BString, Statement>,
+    struct_defs: Trie<BString, Trie<BString, ()>>,
 }
 
 impl Scope<'_> {
@@ -300,6 +301,38 @@ impl Scope<'_> {
         }
     }
 
+    pub fn get_struct_def(&self, ident: &str) -> Result<&Trie<BString, ()>, String> {
+        let mut scope = self;
+        loop {
+            let mut matches = scope.struct_defs.iter_prefix_str(ident);
+            let v = match matches.next() {
+                Some(v) => v,
+                None => {
+                    if let Some(parent) = scope.parent_scope {
+                        scope = parent;
+                        continue;
+                    } else {
+                        return Err(format!("Struct type `{}` has not been defined", ident));
+                    }
+                }
+            };
+
+            for collision in matches {
+                if collision.0.as_str().starts_with(v.0.as_str()) {
+                    continue;
+                }
+
+                return Err(format!(
+                    "use of the struct name `{}` is ambiguous, it could refer to `{}` and `{}`",
+                    ident,
+                    v.0.as_str(),
+                    collision.0.as_str()
+                ));
+            }
+            return Ok(v.1);
+        }
+    }
+
     pub fn add_functions_from_ast(&mut self, ast: &[Statement]) {
         for stmt in ast {
             if let Statement::FunctionDefinition {
@@ -313,12 +346,31 @@ impl Scope<'_> {
         }
     }
 
+    pub fn add_struct_defs_from_ast(&mut self, ast: &[Statement]) {
+        for stmt in ast {
+            if let Statement::StructDefinition {
+                struct_type,
+                fields,
+            } = &stmt
+            {
+                self.struct_defs.insert_str(
+                    struct_type,
+                    fields
+                        .iter()
+                        .map(|field| (BString::from(field.clone()), ()))
+                        .collect(),
+                );
+            }
+        }
+    }
+
     /// Create a new scope, with `self` as the parent.
     pub fn child_scope(&self) -> Scope<'_> {
         Scope {
             parent_scope: Some(self),
             variables: Trie::new(),
             functions: builtins::builtins(),
+            struct_defs: Trie::new(),
         }
     }
 }
@@ -329,6 +381,7 @@ impl Default for Scope<'_> {
             parent_scope: Default::default(),
             variables: Default::default(),
             functions: builtins::builtins(),
+            struct_defs: Trie::new(),
         }
     }
 }
@@ -408,6 +461,7 @@ impl FromResidual<Result<Infallible, InterpreterError>> for Exec {
 impl<'b, 's> Interpreter<'b, 's> {
     pub fn new(mut scope: Scope<'s>, ast: &'b [Statement]) -> Self {
         scope.add_functions_from_ast(ast);
+        scope.add_struct_defs_from_ast(ast);
 
         Self {
             scope,
@@ -717,6 +771,47 @@ impl<'b, 's> Interpreter<'b, 's> {
                 struct_type,
                 fields,
             } => {
+                let struct_def = self
+                    .scope
+                    .get_struct_def(struct_type)
+                    .map_err(|msg| self.error(msg))?;
+
+                for (field_name, _) in fields.iter() {
+                    match struct_def.iter_prefix_str(field_name).count() {
+                        0 => {
+                            return Err(self.error(format!(
+                                "Field `{}` does not exist in struct type `{}`",
+                                field_name, struct_type
+                            )))
+                        }
+                        1 => (),
+                        _ => {
+                            return Err(self.error(format!(
+                                "Field name `{}` is ambiguous in struct type `{}`",
+                                field_name, struct_type
+                            )))
+                        }
+                    }
+                }
+
+                let missing_fields: Vec<_> = struct_def
+                    .keys()
+                    .filter(|struct_field| {
+                        !fields
+                            .iter()
+                            .any(|(field_name, _)| struct_field.as_str().starts_with(field_name))
+                    })
+                    .map(|field| field.as_str())
+                    .collect();
+
+                if missing_fields.len() > 0 {
+                    return Err(self.error(format!(
+                        "Struct literal `{}` missing fields: {}",
+                        struct_type,
+                        missing_fields.iter().join_with(", ")
+                    )));
+                }
+
                 if value_ignored {
                     for (_, value) in fields.iter() {
                         self.eval(value, value_ignored)?;
