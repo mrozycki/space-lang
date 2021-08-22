@@ -1,4 +1,5 @@
-let number to check := 1001;
+print("Give me a number to check: ");
+let number to check := int(read line());
 
 let prime check := 1;
 
