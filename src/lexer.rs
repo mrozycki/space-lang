@@ -126,10 +126,11 @@ impl<'a> Lexer<'a> {
             self.advance();
             Ok(())
         } else {
-            if c == '=' {
-                Err(self.error(format!("Unexpected '=' instead of ':='")))
+            let found = self.peek();
+            if found == char::default() {
+                Err(self.error(format!("Expected '{}', found end of stream", c)))
             } else {
-                Err(self.error(format!("Unexpected '{}'", c)))
+                Err(self.error(format!("Expected '{}', found '{}'", c, found)))
             }
         }
     }
@@ -208,8 +209,12 @@ impl<'a> Lexer<'a> {
             }
         } else if self.peek() == '=' {
             self.advance();
-            self.consume('=')?;
-            Ok(self.emit(TokenType::Equal))
+            if self.peek() == '=' {
+                self.advance();
+                Ok(self.emit(TokenType::Equal))
+            } else {
+                Err(self.error("Invalid '=' token. Did you mean ':='?".to_owned()))
+            }
         } else if self.peek() == '<' {
             self.advance();
             if self.peek() == '=' {
@@ -385,7 +390,7 @@ mod tests {
         assert_eq!(
             lex(program),
             Ok(vec![
-                TokenType::Identifier("Hello world ".to_owned(), Vec::new()),
+                TokenType::Identifier("Hello world".to_owned(), Vec::new()),
                 TokenType::Assign,
                 TokenType::Integer("5".to_owned()),
                 TokenType::Semicolon,
@@ -462,7 +467,7 @@ mod tests {
             Ok(vec![
                 TokenType::Func,
                 TokenType::Identifier(
-                    "contains substring checks if `haystack` contains `needle` ".to_owned(),
+                    "contains substring checks if `haystack` contains `needle`".to_owned(),
                     vec!["haystack".to_owned(), "needle".to_owned()]
                 ),
                 TokenType::LeftBrace,
@@ -482,7 +487,7 @@ mod tests {
                 TokenType::Let,
                 TokenType::Identifier("Hello".to_owned(), Vec::new()),
                 TokenType::Comma,
-                TokenType::Identifier("world ".to_owned(), Vec::new()),
+                TokenType::Identifier("world".to_owned(), Vec::new()),
                 TokenType::Assign,
                 TokenType::Integer("42".to_owned()),
                 TokenType::Semicolon,
@@ -556,7 +561,7 @@ mod tests {
         assert_eq!(
             lex(program),
             Err(LexerError {
-                message: "Expected \"".to_owned(),
+                message: "Expected '\"', found end of stream".to_owned(),
                 line: 1,
                 column: 14,
             })
@@ -570,7 +575,7 @@ mod tests {
         assert_eq!(
             lex(program),
             Err(LexerError {
-                message: "Expected =".to_owned(),
+                message: "Expected '=', found ' '".to_owned(),
                 line: 1,
                 column: 7
             })
@@ -584,7 +589,7 @@ mod tests {
         assert_eq!(
             lex(program),
             Err(LexerError {
-                message: "Expected |".to_owned(),
+                message: "Expected '|', found ' '".to_owned(),
                 line: 4,
                 column: 12
             })
