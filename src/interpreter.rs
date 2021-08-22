@@ -1,17 +1,18 @@
 use crate::{
     ast::{Expression, Statement},
     builtins,
-    lexer::{Token, TokenType},
+    lexer::{Lexer, Token, TokenType},
+    parser::Parser,
 };
 use gc::{Finalize, Gc, GcCell, Trace};
 use joinery::JoinableIterator;
 use qp_trie::{wrapper::BString, Trie};
-use std::fmt;
 use std::{
     cell::RefCell,
     convert::{Infallible, TryFrom, TryInto},
     ops::{ControlFlow, FromResidual, Try},
 };
+use std::{fmt, path::PathBuf};
 
 #[derive(Debug, Clone, Trace, Finalize, PartialEq)]
 pub enum Value {
@@ -319,6 +320,8 @@ pub struct Interpreter<'b, 's> {
     body: &'b [Statement],
     line: usize,
     column: usize,
+    variable_exports: Trie<BString, RefCell<Value>>,
+    function_exports: Vec<Statement>,
 }
 
 /// Represents all events that need to be bubbled-up during interpretation:
@@ -375,6 +378,8 @@ impl<'b, 's> Interpreter<'b, 's> {
             body: ast,
             line: 0,
             column: 0,
+            function_exports: Vec::new(),
+            variable_exports: Trie::new(),
         }
     }
 
@@ -638,6 +643,51 @@ impl<'b, 's> Interpreter<'b, 's> {
         }
     }
 
+    fn import_module(&mut self, name: &String) -> Exec {
+        let mut path = PathBuf::new();
+        path.set_file_name(name);
+        path.set_extension("🌌");
+
+        match std::fs::read_to_string(path) {
+            Ok(code) => {
+                let lexer = Lexer::new(&code);
+                match lexer.into_tokens() {
+                    Ok(tokens) => {
+                        let parser = Parser::new(tokens);
+                        match parser.parse() {
+                            Ok(ast) => {
+                                let mut interpreter = Interpreter::with_ast(&ast);
+                                interpreter.run()?;
+
+                                for func in interpreter.function_exports {
+                                    match &func {
+                                        Statement::FunctionDefinition {
+                                            name,
+                                            parameters: _,
+                                            body: _,
+                                        } => {
+                                            self.scope.functions.insert_str(name, func.clone());
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                }
+
+                                self.scope.variables.extend(interpreter.variable_exports);
+
+                                Exec::Ok
+                            }
+                            Err(e) => {
+                                Exec::Err(self.error(format!("Error parsing imported file: {}", e)))
+                            }
+                        }
+                    }
+                    Err(e) => Exec::Err(self.error(format!("Error lexing imported file: {}", e))),
+                }
+            }
+            Err(e) => Exec::Err(self.error(format!("Error reading imported file: {}", e))),
+        }
+    }
+
     pub fn run(&mut self) -> Exec {
         for stmt in self.body {
             match stmt {
@@ -726,6 +776,33 @@ impl<'b, 's> Interpreter<'b, 's> {
                     };
 
                     return Exec::Return(value);
+                }
+                Statement::ExportVariable { name, value } => {
+                    if let TokenType::Identifier(ident, args) = self.get_token_type(&name) {
+                        if args.len() != 0 {
+                            return Exec::Err(self.error(
+                                "export identifiers cannot contain backtick arguments".to_owned(),
+                            ));
+                        }
+
+                        let val = self.eval(&value, false)?;
+                        self.variable_exports
+                            .insert_str(ident.into(), RefCell::new(val));
+                    }
+                }
+                Statement::ExportFunction { definition } => {
+                    self.function_exports.push(definition.as_ref().clone());
+                }
+                Statement::Import { name } => {
+                    if let TokenType::Identifier(ident, args) = self.get_token_type(&name) {
+                        if args.len() != 0 {
+                            return Exec::Err(self.error(
+                                "import identifiers cannot contain backtick arguments".to_owned(),
+                            ));
+                        }
+
+                        self.import_module(ident)?;
+                    }
                 }
                 Statement::Break => return Exec::Break,
                 Statement::Continue => return Exec::Continue,

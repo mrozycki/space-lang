@@ -114,6 +114,8 @@ impl Parser {
             Some(TokenType::Return) => self.return_statement(),
             Some(TokenType::Break) => self.break_statement(),
             Some(TokenType::Continue) => self.continue_statement(),
+            Some(TokenType::Export) => self.export_statement(),
+            Some(TokenType::Import) => self.import_statement(),
             Some(_) => self.expression_statement(),
             None => Err(self.error("Expected a statement")),
         }
@@ -152,6 +154,55 @@ impl Parser {
             variable: name,
             value: initializer,
         })
+    }
+
+    pub fn export_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::Export])
+            .ok_or(self.error("Expected 'export' keyword"))?;
+
+        match self
+            .tokens
+            .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
+        {
+            Some(name) => {
+                self.tokens
+                    .consume(vec![TokenType::Assign])
+                    .ok_or(self.error("Expected ':=' after name in export"))?;
+                let value = self.expression()?;
+
+                self.tokens
+                    .consume(vec![TokenType::Semicolon])
+                    .ok_or(self.error("Expected ';' at the end of an export statement"))?;
+
+                Ok(Statement::ExportVariable { name, value })
+            }
+            None => {
+                let func = self.function_definition().or(Err(
+                    self.error("Expected function or identifier after 'export' keyword")
+                ))?;
+                Ok(Statement::ExportFunction {
+                    definition: Box::new(func),
+                })
+            }
+        }
+    }
+
+    pub fn import_statement(&mut self) -> Result<Statement, ParserError> {
+        self.tokens
+            .consume(vec![TokenType::Import])
+            .ok_or(self.error("Expected 'import' keyword"))?;
+
+        let name = self
+            .tokens
+            .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
+            .ok_or(self.error("Expected identifier after 'import' keyword"))?;
+
+        self.tokens
+            .consume(vec![TokenType::Semicolon])
+            .ok_or(self.error("Expected ';' at the end of an import statement"))?;
+
+        Ok(Statement::Import { name })
     }
 
     pub fn conditional_statement(&mut self) -> Result<Statement, ParserError> {

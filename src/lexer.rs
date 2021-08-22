@@ -21,6 +21,8 @@ pub enum TokenType {
     Return,
     Break,
     Continue,
+    Export,
+    Import,
     If,
     Else,
     While,
@@ -314,6 +316,8 @@ impl<'a> Lexer<'a> {
             "while" => Some(self.emit(TokenType::While)),
             "break" => Some(self.emit(TokenType::Break)),
             "continue" => Some(self.emit(TokenType::Continue)),
+            "export" => Some(self.emit(TokenType::Export)),
+            "import" => Some(self.emit(TokenType::Import)),
             _ => None,
         }
     }

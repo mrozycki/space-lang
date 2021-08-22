@@ -65,6 +65,16 @@ pub enum Statement {
     },
     Break,
     Continue,
+    ExportVariable {
+        name: Token,
+        value: Expression,
+    },
+    ExportFunction {
+        definition: Box<Statement>,
+    },
+    Import {
+        name: Token,
+    },
     CallBuiltin {
         function: crate::builtins::BuiltinFunction,
     },

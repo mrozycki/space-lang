@@ -10,7 +10,7 @@ use std::{
     io::{self, Read, Result},
 };
 
-use interpreter::{Interpreter, Exec};
+use interpreter::{Exec, Interpreter};
 use lexer::Lexer;
 use parser::Parser;
 
