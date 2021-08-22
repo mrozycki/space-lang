@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::ast::{Expression, Statement};
@@ -112,6 +113,7 @@ impl Parser {
             Some(TokenType::LeftParen) => self.block(),
             Some(TokenType::Func) => self.function_definition(),
             Some(TokenType::Return) => self.return_statement(),
+            Some(TokenType::Struct) => self.struct_definition(),
             Some(TokenType::Break) => self.break_statement(),
             Some(TokenType::Continue) => self.continue_statement(),
             Some(TokenType::Export) => self.export_statement(),
@@ -307,6 +309,27 @@ impl Parser {
         }
     }
 
+    pub fn struct_definition(&mut self) -> Result<Statement, ParserError> {
+        self.tokens.consume(vec![TokenType::Struct]).unwrap();
+
+        if let Some(Token {
+            token_type: TokenType::Identifier(struct_type, fields),
+            ..
+        }) = self.tokens.next()
+        {
+            self.tokens
+                .consume(vec![TokenType::Semicolon])
+                .ok_or(self.error("Expected ';' at the end of return statement"))?;
+
+            Ok(Statement::StructDefinition {
+                struct_type,
+                fields,
+            })
+        } else {
+            Err(self.error("Expected a struct definition after `struct` keyword"))
+        }
+    }
+
     pub fn break_statement(&mut self) -> Result<Statement, ParserError> {
         self.tokens.consume(vec![TokenType::Break]).unwrap();
 
@@ -458,7 +481,7 @@ impl Parser {
     }
 
     fn postfix(&mut self) -> Result<Expression, ParserError> {
-        let mut expression = self.primary()?;
+        let mut expression = self.struct_literal()?;
 
         while let Some(tok) = self.tokens.peek() {
             match tok.token_type {
@@ -494,11 +517,93 @@ impl Parser {
                         index: Box::new(index),
                     };
                 }
+                TokenType::Dot => {
+                    self.tokens.next();
+                    let field_name = if let Some(Token {
+                        token_type: TokenType::Identifier(name, parameters),
+                        ..
+                    }) = self.tokens.next()
+                    {
+                        if parameters.len() > 0 {
+                            return Err(self.error("Struct field names cannot be parameterized"));
+                        }
+                        name
+                    } else {
+                        return Err(self.error("Expected a field name after '.'"));
+                    };
+
+                    expression = Expression::StructFieldRef {
+                        target: Box::new(expression),
+                        field_name,
+                    }
+                }
                 _ => break,
             }
         }
 
         Ok(expression)
+    }
+
+    fn struct_literal(&mut self) -> Result<Expression, ParserError> {
+        let expr = self.primary()?;
+
+        if let Some(..) = self.tokens.consume(vec![TokenType::LeftBrace]) {
+            let struct_type = if let Expression::Variable {
+                name:
+                    Token {
+                        token_type: TokenType::Identifier(name, _parameters),
+                        ..
+                    },
+            } = expr
+            {
+                name
+            } else {
+                return Err(self.error("Expected a type name before '{'"));
+            };
+
+            let mut fields = HashMap::new();
+            while self
+                .tokens
+                .peek()
+                .map_or(false, |tok| tok.token_type != TokenType::RightBrace)
+            {
+                let field_name = if let Some(Token {
+                    token_type: TokenType::Identifier(name, parameters),
+                    ..
+                }) = self.tokens.next()
+                {
+                    if parameters.len() > 0 {
+                        return Err(self.error("Struct field names cannot be parameterized"));
+                    }
+                    name
+                } else {
+                    return Err(self.error("Expected a field name in a struct literal"));
+                };
+
+                self.tokens
+                    .consume(vec![TokenType::Assign])
+                    .ok_or(self.error("Expected ':=' after a field identifier"))?;
+
+                let field_value = self
+                    .expression()
+                    .map_err(|_| self.error("Expected a value for a field"))?;
+
+                fields.insert(field_name, field_value);
+
+                self.tokens.consume(vec![TokenType::Comma]);
+            }
+
+            self.tokens
+                .consume(vec![TokenType::RightBrace])
+                .ok_or(self.error("Expected '}' at the end of a struct literal"))?;
+
+            Ok(Expression::StructLiteral {
+                struct_type,
+                fields,
+            })
+        } else {
+            Ok(expr)
+        }
     }
 
     fn primary(&mut self) -> Result<Expression, ParserError> {

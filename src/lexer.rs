@@ -11,6 +11,7 @@ pub enum TokenType {
     RightSquare,
     Assign,
     Semicolon,
+    Dot,
     Comma,
     Integer(String),
     Float(String),
@@ -26,7 +27,7 @@ pub enum TokenType {
     If,
     Else,
     While,
-    Eof,
+    Struct,
     Plus,
     Minus,
     Star,
@@ -41,6 +42,7 @@ pub enum TokenType {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+    Eof,
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +177,9 @@ impl<'a> Lexer<'a> {
             self.advance();
             self.consume('=')?;
             Ok(self.emit(TokenType::Assign))
+        } else if self.peek() == '.' {
+            self.advance();
+            Ok(self.emit(TokenType::Dot))
         } else if self.peek() == ',' {
             self.advance();
             Ok(self.emit(TokenType::Comma))
@@ -299,7 +304,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_operator_char(c: char) -> bool {
-        "{}()[]:;,+-*/%&|<>=!".contains(c)
+        "{}()[]:;.,+-*/%&|<>=!".contains(c)
     }
 
     fn is_naked_identifier_char(c: char) -> bool {
@@ -318,6 +323,7 @@ impl<'a> Lexer<'a> {
             "continue" => Some(self.emit(TokenType::Continue)),
             "export" => Some(self.emit(TokenType::Export)),
             "import" => Some(self.emit(TokenType::Import)),
+            "struct" => Some(self.emit(TokenType::Struct)),
             _ => None,
         }
     }

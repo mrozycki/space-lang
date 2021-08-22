@@ -655,6 +655,7 @@ impl<'b, 's> Interpreter<'b, 's> {
             Expression::FunctionCall { callee, arguments } => {
                 self.eval_functioncall(callee, arguments)
             }
+            _ => todo!(),
         }
     }
 
@@ -856,6 +857,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                 Statement::Break => return Exec::Break,
                 Statement::Continue => return Exec::Continue,
                 Statement::CallBuiltin { function: _ } => unreachable!(),
+                _ => todo!(),
             }
         }
 
