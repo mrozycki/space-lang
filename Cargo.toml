@@ -9,3 +9,4 @@ edition = "2018"
 gc = { version = "0.4.1", features = ["derive"] }
 joinery = "2.1.0"
 qp-trie = "0.7.7"
+rand = "0.8.4"

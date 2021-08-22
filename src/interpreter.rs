@@ -567,10 +567,14 @@ impl<'b, 's> Interpreter<'b, 's> {
         self.line = function_interpreter.line;
         self.column = function_interpreter.column;
 
-        if !function_interpreter.variable_exports.is_empty() || !function_interpreter.function_exports.is_empty() {
-            return Err(self.error("values/functions cannot be exported from within functions".to_string()));
+        if !function_interpreter.variable_exports.is_empty()
+            || !function_interpreter.function_exports.is_empty()
+        {
+            return Err(
+                self.error("values/functions cannot be exported from within functions".to_string())
+            );
         }
-        
+
         match result {
             Exec::Ok => Ok(Value::Null),
             Exec::Return(v) => Ok(v),
@@ -742,8 +746,15 @@ impl<'b, 's> Interpreter<'b, 's> {
                         self.line = loop_interpreter.line;
                         self.column = loop_interpreter.column;
 
-                        if !loop_interpreter.variable_exports.is_empty() || !loop_interpreter.function_exports.is_empty() {
-                            return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
+                        if !loop_interpreter.variable_exports.is_empty()
+                            || !loop_interpreter.function_exports.is_empty()
+                        {
+                            return Exec::Err(
+                                self.error(
+                                    "values/functions cannot be exported from within blocks"
+                                        .to_string(),
+                                ),
+                            );
                         }
 
                         match result {
@@ -769,8 +780,17 @@ impl<'b, 's> Interpreter<'b, 's> {
                         continue;
                     };
 
-                    let body_ast = match body.as_ref() {
+                    let body_ast = match *body.clone() {
                         Statement::Block { statements } => statements,
+                        Statement::Conditional {
+                            condition,
+                            if_true,
+                            if_false,
+                        } => vec![Statement::Conditional {
+                            condition,
+                            if_true,
+                            if_false,
+                        }],
                         _ => unreachable!(),
                     };
 
@@ -783,10 +803,13 @@ impl<'b, 's> Interpreter<'b, 's> {
                     self.line = if_interpreter.line;
                     self.column = if_interpreter.column;
 
-                    if !if_interpreter.variable_exports.is_empty() || !if_interpreter.function_exports.is_empty() {
-                        return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
+                    if !if_interpreter.variable_exports.is_empty()
+                        || !if_interpreter.function_exports.is_empty()
+                    {
+                        return Exec::Err(self.error(
+                            "values/functions cannot be exported from within blocks".to_string(),
+                        ));
                     }
-
                 }
 
                 Statement::FunctionDefinition {

@@ -2,6 +2,7 @@ use crate::ast::Statement;
 use crate::interpreter::Value;
 use gc::{Gc, GcCell};
 use qp_trie::{wrapper::BString, Trie};
+use rand::Rng;
 
 pub type BuiltinFunction = fn(Vec<Value>) -> Result<Value, String>;
 
@@ -19,6 +20,7 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("floating point cast", float as BuiltinFunction),
         ("integer cast", integer as BuiltinFunction),
         ("split string", split_string as BuiltinFunction),
+        ("random integer", random_integer as BuiltinFunction)
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -48,6 +50,7 @@ fn print(args: Vec<Value>) -> Result<Value, String> {
     for value in args {
         print!("{}", value);
     }
+    std::io::Write::flush(&mut std::io::stdout()).unwrap();
     Ok(Value::Null)
 }
 
@@ -121,4 +124,8 @@ fn split_string(args: Vec<Value>) -> Result<Value, String> {
     } else {
         return Err("the second argument to builtin `split string` must be a string".to_string());
     }
+}
+
+fn random_integer(_args: Vec<Value>) -> Result<Value, String> {
+    Ok(Value::Integer(rand::thread_rng().gen()))
 }
