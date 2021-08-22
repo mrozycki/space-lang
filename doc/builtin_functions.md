@@ -11,3 +11,4 @@ split string | String, String -> Array\<String\> | Splits the first argument usi
 floating point cast | (Integer \| Float \| String) -> Float | Casts a value to a float, by converting an integer or parsing a string.
 integer cast | (Integer \| Float \| String) -> Integer | Casts a value to an integer, by truncating a float or parsing a string.
 random integer | Void -> Integer | Returns a random integer from i64::MIN to i64::MAX.
+get char in string | String, Integer -> String | Gets a character from a string by its index.

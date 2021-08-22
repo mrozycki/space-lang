@@ -20,7 +20,8 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("floating point cast", float as BuiltinFunction),
         ("integer cast", integer as BuiltinFunction),
         ("split string", split_string as BuiltinFunction),
-        ("random integer", random_integer as BuiltinFunction)
+        ("random integer", random_integer as BuiltinFunction),
+        ("get char in string", get_char_in_string as BuiltinFunction)
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -122,10 +123,39 @@ fn split_string(args: Vec<Value>) -> Result<Value, String> {
             );
         }
     } else {
-        return Err("the second argument to builtin `split string` must be a string".to_string());
+        return Err("the first argument to builtin `split string` must be a string".to_string());
     }
 }
 
 fn random_integer(_args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Integer(rand::thread_rng().gen()))
+}
+
+fn get_char_in_string(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!(
+            "builtin `get char in string` requires exactly 2 arguments, got {}",
+            args.len()
+        ));
+    }
+
+    if let Value::String(s) = &args[0] {
+        if let Value::Integer(i) = args[1] {
+            if i < 0 || i as usize >= s.chars().count() {
+                return Err("out of bounds string index in `get char in string`".to_string());
+            }
+
+            let chr = s.chars().nth(i as usize).unwrap().to_string();
+            return Ok(Value::String(chr));
+        } else {
+            return Err(
+                "the second argument to builtin `get char in string` must be an integer"
+                    .to_string(),
+            );
+        }
+    } else {
+        return Err(
+            "the first argument to builtin `get char in string` must be a string".to_string(),
+        );
+    }
 }
