@@ -1,6 +1,7 @@
 use crate::ast::Statement;
 use crate::interpreter::Value;
 use qp_trie::{wrapper::BString, Trie};
+use gc::{Gc, GcCell};
 
 pub type BuiltinFunction = fn(Vec<Value>) -> Result<Value, String>;
 
@@ -17,6 +18,7 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("length of", len as BuiltinFunction),
         ("floating point cast", float as BuiltinFunction),
         ("integer cast", integer as BuiltinFunction),
+        ("split string", split_string as BuiltinFunction)
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -94,5 +96,22 @@ fn integer(args: Vec<Value>) -> Result<Value, String> {
         }
         Some(a) => Err(format!("{} cannot be cast to float", a.describe_type())),
         _ => Err("builtin `integer cast` requires an integer, float or string argument".to_owned()),
+    }
+}
+
+fn split_string(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!("builtin `split string` requires exactly 2 arguments, got {}", args.len()));
+    }
+
+    if let Value::String(s) = &args[0] {
+        if let Value::String(p) = &args[1] {
+            let elms = Gc::new(GcCell::new(s.split(p).map(|s| Value::String(s.to_string())).collect()));
+            return Ok(Value::Array(elms))
+        } else {
+            return Err("the second argument to builtin `split string` must be a string".to_string());
+        }
+    } else {
+        return Err("the second argument to builtin `split string` must be a string".to_string());
     }
 }
