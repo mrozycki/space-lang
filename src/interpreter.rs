@@ -560,7 +560,12 @@ impl<'b, 's> Interpreter<'b, 's> {
         };
 
         let mut function_interpreter = Interpreter::new(call_scope, function_ast);
+        function_interpreter.line = self.line;
+        function_interpreter.column = self.column;
+
         let result = function_interpreter.run();
+        self.line = function_interpreter.line;
+        self.column = function_interpreter.column;
 
         if !function_interpreter.variable_exports.is_empty() || !function_interpreter.function_exports.is_empty() {
             return Err(self.error("values/functions cannot be exported from within functions".to_string()));
@@ -734,8 +739,8 @@ impl<'b, 's> Interpreter<'b, 's> {
                         loop_interpreter.column = self.column;
 
                         let result = loop_interpreter.run();
-                        self.line = if_interpreter.line;
-                        self.column = if_interpreter.column;
+                        self.line = loop_interpreter.line;
+                        self.column = loop_interpreter.column;
 
                         if !loop_interpreter.variable_exports.is_empty() || !loop_interpreter.function_exports.is_empty() {
                             return Exec::Err(self.error("values/functions cannot be exported from within blocks".to_string()));
