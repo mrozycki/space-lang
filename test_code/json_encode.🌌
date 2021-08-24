@@ -1,0 +1,45 @@
+func JSON encode `value` encodes a space value to a JSON string {
+    let ty := type of (value);
+    if ty == "integer" || ty == "float" {
+        print (value);
+    } else if ty == "string" {
+        print ("\"");
+        print (value);
+        print ("\"");
+    } else if ty == "array" {
+        print ("[");
+        let i := 0;
+        while i < length of (value) {
+            JSON encode (value[i]);
+            if i != length of (value) - 1 {
+                print(", ");
+            }
+            i := i + 1;
+        }
+        print ("]");
+    } else if ty == "struct" {
+        print ("{");
+        let keys := keys in (value);
+        let values := values in (value);
+        let i := 0;
+        while i < length of (keys) {
+            JSON encode (keys[i]);
+            print (": ");
+            JSON encode (values[i]);
+            if i != length of (value) - 1 {
+                print (", ");
+            }
+            i := i + 1;
+        }
+        print ("}");
+    }
+}
+
+struct shape has an `area` and `faces`;
+let some shape := shape {
+    area := 200,
+    faces := ["red", "green", "blue"]
+};
+
+JSON encode (some shape);
+println ();

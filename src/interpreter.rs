@@ -19,7 +19,7 @@ const SOURCE_FILE_EXTENSIONS: [&'static str; 4] = ["🌌", "space", "spc", "spce
 
 #[derive(Debug, PartialEq)]
 pub struct Map {
-    trie: Trie<BString, Value>,
+    pub trie: Trie<BString, Value>,
 }
 
 impl Finalize for Map {}

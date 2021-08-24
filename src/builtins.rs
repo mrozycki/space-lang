@@ -22,6 +22,10 @@ pub fn builtins() -> Trie<BString, Statement> {
         ("split string", split_string as BuiltinFunction),
         ("random integer", random_integer as BuiltinFunction),
         ("get char in string", get_char_in_string as BuiltinFunction),
+        ("type of", type_of as BuiltinFunction),
+        ("to string", to_string as BuiltinFunction),
+        ("keys in struct", keys_in_struct as BuiltinFunction),
+        ("values in struct", values_in_struct as BuiltinFunction)
     ]
     .iter()
     .map(|(name, func)| ((*name).into(), create_builtin_statement(*func)))
@@ -157,5 +161,77 @@ fn get_char_in_string(args: Vec<Value>) -> Result<Value, String> {
         return Err(
             "the first argument to builtin `get char in string` must be a string".to_string(),
         );
+    }
+}
+
+fn type_of(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "builtin `type of` requires exactly 1 argument, got {}",
+            args.len()
+        ));
+    }
+
+    Ok(Value::String(
+        match args[0] {
+            Value::Integer(..) => "integer",
+            Value::Float(..) => "float",
+            Value::String(..) => "string",
+            Value::Array(..) => "array",
+            Value::Struct(..) => "struct",
+            Value::Null => "null",
+        }
+        .to_string(),
+    ))
+}
+
+fn to_string(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "builtin `to string` requires exactly 1 argument, got {}",
+            args.len()
+        ));
+    }
+
+    Ok(Value::String(args[0].to_string()))
+}
+
+fn keys_in_struct(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "builtin `keys_in_struct` requires exactly 1 argument, got {}",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::Struct(_, map) => Ok(Value::Array(Gc::new(GcCell::new(
+            map.borrow()
+                .trie
+                .keys()
+                .map(|k| Value::String(k.as_str().to_string()))
+                .collect::<Vec<Value>>(),
+        )))),
+        _ => Err("builtin `keys_in_struct` requires a struct argument".to_string())
+    }
+}
+
+fn values_in_struct(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "builtin `keys_in_struct` requires exactly 1 argument, got {}",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::Struct(_, map) => Ok(Value::Array(Gc::new(GcCell::new(
+            map.borrow()
+                .trie
+                .values()
+                .map(|k| k.clone())
+                .collect::<Vec<Value>>(),
+        )))),
+        _ => Err("builtin `keys_in_struct` requires a struct argument".to_string())
     }
 }
