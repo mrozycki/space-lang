@@ -69,7 +69,7 @@ pub enum Statement {
         name: String,
         parameters: Vec<String>,
         body: Box<Statement>,
-        export: bool
+        export: bool,
     },
     Return {
         expression: Option<Expression>,
@@ -89,6 +89,7 @@ pub enum Statement {
     StructDefinition {
         struct_type: String,
         fields: Vec<String>,
-        export: bool
+        export: bool,
     },
+    Invalid,
 }

@@ -1,6 +1,7 @@
 #![feature(try_trait_v2)]
 mod ast;
 mod builtins;
+mod error_reporter;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -8,29 +9,33 @@ mod parser;
 use std::{
     env, fs,
     io::{self, Read, Result},
+    rc::Rc,
 };
 
+use error_reporter::ConsoleErrorReporter;
 use interpreter::{Exec, Interpreter};
 use lexer::Lexer;
 use parser::Parser;
 
 fn process(code: &str) {
+    let error_reporter = Rc::new(ConsoleErrorReporter::new());
     let lexer = Lexer::new(code);
     match lexer.into_tokens() {
         Ok(tokens) => {
-            let parser = Parser::new(tokens);
-            match parser.parse() {
-                Ok(expression) => {
-                    let mut interpreter = Interpreter::with_ast(&expression);
-                    match interpreter.run() {
-                        Exec::Err(e) => eprintln!("Interpreter error: {}", e),
-                        Exec::Return(_) => eprintln!("return outside of a function"),
-                        Exec::Break => eprintln!("break outside of a loop"),
-                        Exec::Continue => eprintln!("continue outside of a loop"),
-                        Exec::Ok => (),
-                    }
-                }
-                Err(e) => eprintln!("Parser error: {}", e),
+            let mut parser = Parser::new(tokens, error_reporter.clone());
+            let statements = parser.parse();
+            if parser.had_errors() {
+                eprintln!("Program had parse errors; returning");
+                return;
+            }
+
+            let mut interpreter = Interpreter::with_ast(&statements);
+            match interpreter.run() {
+                Exec::Err(e) => eprintln!("Interpreter error: {}", e),
+                Exec::Return(_) => eprintln!("return outside of a function"),
+                Exec::Break => eprintln!("break outside of a loop"),
+                Exec::Continue => eprintln!("continue outside of a loop"),
+                Exec::Ok => (),
             }
         }
         Err(e) => {

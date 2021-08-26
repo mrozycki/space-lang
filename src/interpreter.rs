@@ -1,6 +1,7 @@
 use crate::{
     ast::{Expression, Statement},
     builtins,
+    error_reporter::ConsoleErrorReporter,
     lexer::{Lexer, Token, TokenType},
     parser::Parser,
 };
@@ -11,6 +12,7 @@ use std::{
     cell::RefCell,
     convert::{Infallible, TryFrom, TryInto},
     ops::{ControlFlow, FromResidual, Try},
+    rc::Rc,
 };
 use std::{fmt, path::PathBuf};
 
@@ -879,8 +881,11 @@ impl<'b, 's> Interpreter<'b, 's> {
             path.set_file_name(name);
             path.set_extension(extension);
             match std::fs::read_to_string(path) {
-                Ok(c) => { code = Some(c); break },
-                Err(_) => continue
+                Ok(c) => {
+                    code = Some(c);
+                    break;
+                }
+                Err(_) => continue,
             }
         }
 
@@ -893,10 +898,14 @@ impl<'b, 's> Interpreter<'b, 's> {
         let tokens = lexer
             .into_tokens()
             .map_err(|e| self.error(format!("Error lexing imported file: {}", e)))?;
-        let parser = Parser::new(tokens);
-        let ast = parser
-            .parse()
-            .map_err(|e| self.error(format!("Error parsing imported file: {}", e)))?;
+        let error_reporter = Rc::new(ConsoleErrorReporter::new());
+        let mut parser = Parser::new(tokens, error_reporter.clone());
+        let ast = parser.parse();
+
+        if parser.had_errors() {
+            return Exec::Err(self.error("Error parsing imported file".to_owned()));
+        }
+
         let mut interpreter = Interpreter::with_ast(&ast);
         interpreter.run()?;
 
@@ -1089,6 +1098,7 @@ impl<'b, 's> Interpreter<'b, 's> {
                 Statement::Continue => return Exec::Continue,
                 Statement::CallBuiltin { function: _ } => unreachable!(),
                 Statement::StructDefinition { .. } => (),
+                Statement::Invalid => unreachable!(),
             }
         }
 

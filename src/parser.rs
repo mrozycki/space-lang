@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 
 use crate::ast::{Expression, Statement};
+use crate::error_reporter::{CodeLocation, ErrorReporter};
 use crate::lexer::{Token, TokenType};
 
 struct TokenIterator {
@@ -18,6 +20,14 @@ impl TokenIterator {
         self.peek()
             .map(|t| t.token_type == TokenType::Eof)
             .unwrap_or(true)
+    }
+
+    fn current(&self) -> Option<&Token> {
+        if self.index == 0 {
+            None
+        } else {
+            Some(&self.tokens[self.index - 1])
+        }
     }
 
     fn peek(&self) -> Option<&Token> {
@@ -81,31 +91,77 @@ impl fmt::Display for ParserError {
 
 pub struct Parser {
     tokens: TokenIterator,
+    error_reporter: Rc<dyn ErrorReporter>,
+    had_errors: bool,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(tokens: Vec<Token>, error_reporter: Rc<dyn ErrorReporter>) -> Parser {
         Self {
             tokens: TokenIterator::new(tokens),
+            error_reporter,
+            had_errors: false,
         }
     }
 
-    fn error(&self, message: &'static str) -> ParserError {
-        ParserError {
+    fn error(&mut self, message: &'static str) {
+        self.error_reporter.report(
             message,
-            location: self.tokens.peek().map(|t| (t.line, t.column)),
+            self.tokens
+                .peek()
+                .map(|t| CodeLocation {
+                    line: t.line,
+                    column: t.column,
+                })
+                .as_ref(),
+        );
+        self.had_errors = true;
+    }
+
+    fn synchronize(&mut self) {
+        loop {
+            if self.tokens.is_at_end()
+                || self.tokens.current().map_or(false, |t| {
+                    t.token_type == TokenType::Semicolon || t.token_type == TokenType::LeftBrace
+                })
+            {
+                break;
+            }
+
+            if self.tokens.peek().map_or(false, Token::is_keyword) {
+                break;
+            }
+
+            if self
+                .tokens
+                .peek()
+                .map_or(false, |t| t.token_type == TokenType::RightBrace)
+            {
+                break;
+            }
+
+            self.tokens.next();
         }
     }
 
-    pub fn parse(mut self) -> Result<Vec<Statement>, ParserError> {
+    fn error_sync(&mut self, message: &'static str) {
+        self.error(message);
+        self.synchronize();
+    }
+
+    pub fn parse(&mut self) -> Vec<Statement> {
         let mut statements = Vec::new();
         while !self.tokens.is_at_end() {
-            statements.push(self.statement()?);
+            statements.push(self.statement());
         }
-        Ok(statements)
+        statements
     }
 
-    pub fn statement(&mut self) -> Result<Statement, ParserError> {
+    pub fn had_errors(&self) -> bool {
+        self.had_errors
+    }
+
+    pub fn statement(&mut self) -> Statement {
         match self.tokens.peek().map(|t| &t.token_type) {
             Some(TokenType::Let) => self.definition_statement(),
             Some(TokenType::If) => self.conditional_statement(),
@@ -119,164 +175,193 @@ impl Parser {
             Some(TokenType::Export) => self.export_statement(),
             Some(TokenType::Import) => self.import_statement(),
             Some(_) => self.expression_statement(),
-            None => Err(self.error("Expected a statement")),
+            None => {
+                self.error("Expected a statement");
+                Statement::Invalid
+            }
         }
     }
 
-    pub fn expression_statement(&mut self) -> Result<Statement, ParserError> {
-        let expression = self.expression(true)?;
-        if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
-            Ok(Statement::Expression { expr: expression })
+    pub fn expression_statement(&mut self) -> Statement {
+        if let Some(expression) = self.expression(true).ok() {
+            if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+                self.error("Expected ';' at the end of expression statement")
+            }
+            Statement::Expression { expr: expression }
         } else {
-            Err(self.error("Expected ';' at the end of expression statement"))
+            self.synchronize();
+            Statement::Invalid
         }
     }
 
-    pub fn definition_statement(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::Let])
-            .ok_or(self.error("Expected 'let' keyword"))?;
+    pub fn definition_statement(&mut self) -> Statement {
+        if self.tokens.consume(vec![TokenType::Let]).is_none() {
+            self.error_sync("Expected 'let' keyword");
+            return Statement::Invalid;
+        }
 
-        let name = self
+        let variable = if let Some(token) = self
             .tokens
             .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
-            .ok_or(self.error("Expected identifier after 'let' keyword"))?;
+        {
+            token
+        } else {
+            self.error_sync("Expected identifier after 'let' keyword");
+            return Statement::Invalid;
+        };
 
-        self.tokens
-            .consume(vec![TokenType::Assign])
-            .ok_or(self.error("Expected ':=' after variable name in definition"))?;
+        if self.tokens.consume(vec![TokenType::Assign]).is_none() {
+            self.error_sync("Expected ':=' after variable name in definition");
+            return Statement::Invalid;
+        }
 
-        let initializer = self.expression(true)?;
+        let value = if let Some(expr) = self.expression(true).ok() {
+            expr
+        } else {
+            return Statement::Invalid;
+        };
 
-        self.tokens
-            .consume(vec![TokenType::Semicolon])
-            .ok_or(self.error("Expected ';' at the end of a variable definition"))?;
+        if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+            self.error_sync("Expected ';' after variable definition");
+            return Statement::Invalid;
+        }
 
-        Ok(Statement::Definition {
-            variable: name,
-            value: initializer,
-        })
+        Statement::Definition { variable, value }
     }
 
-    pub fn export_statement(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::Export])
-            .ok_or(self.error("Expected 'export' keyword"))?;
+    pub fn export_statement(&mut self) -> Statement {
+        self.tokens.consume(vec![TokenType::Export]).unwrap();
 
         match self.tokens.peek().map(|t| &t.token_type) {
             Some(TokenType::Identifier(_, args)) => {
                 if args.len() > 0 {
-                    return Err(self.error("export statement identifier may not contain backtick arguments"));
+                    self.error("export statement identifier may not contain backtick arguments");
                 }
 
-                let name = self
-                    .tokens
-                    .consume(vec![TokenType::Identifier(String::new(), Vec::new())]).unwrap();
-
-                self.tokens
-                    .consume(vec![TokenType::Assign])
-                    .ok_or(self.error("Expected ':=' after name in export"))?;
-                let value = self.expression(true)?;
-
-                self.tokens
-                    .consume(vec![TokenType::Semicolon])
-                    .ok_or(self.error("Expected ';' at the end of an export statement"))?;
-
-                return Ok(Statement::ExportVariable { name, value });
-            },
-            Some(TokenType::Func) => {
-                match self.function_definition()? {
-                    Statement::FunctionDefinition {
-                        name,
-                        parameters,
-                        body,
-                        export: _,
-                    } => Ok(Statement::FunctionDefinition {
-                        name,
-                        parameters,
-                        body,
-                        export: true,
-                    }),
-                    _ => unreachable!(),
-                }
-            },
-
-            Some(TokenType::Struct) => {
-                match self.struct_definition()? {
-                    Statement::StructDefinition { struct_type, fields, export: _ } => {
-                        return Ok(Statement::StructDefinition {
-                            struct_type, fields, export: true
-                        });
+                if let Statement::Definition { variable, value } = self.definition_statement() {
+                    Statement::ExportVariable {
+                        name: variable,
+                        value,
                     }
-                    _ => unreachable!(),
+                } else {
+                    Statement::Invalid
                 }
+            }
+            Some(TokenType::Func) => match self.function_definition() {
+                Statement::FunctionDefinition {
+                    name,
+                    parameters,
+                    body,
+                    export: _,
+                } => Statement::FunctionDefinition {
+                    name,
+                    parameters,
+                    body,
+                    export: true,
+                },
+                _ => Statement::Invalid,
             },
-            _ => return Err(self.error("Expected function definition, struct definition or an identifier after 'export' keyword"))
+            Some(TokenType::Struct) => match self.struct_definition() {
+                Statement::StructDefinition {
+                    struct_type,
+                    fields,
+                    export: _,
+                } => Statement::StructDefinition {
+                    struct_type,
+                    fields,
+                    export: true,
+                },
+                _ => Statement::Invalid,
+            },
+            _ => {
+                self.error_sync("Expected function definition, struct definition or an identifier after 'export' keyword");
+                Statement::Invalid
+            }
         }
     }
 
-    pub fn import_statement(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::Import])
-            .ok_or(self.error("Expected 'import' keyword"))?;
+    pub fn import_statement(&mut self) -> Statement {
+        self.tokens.consume(vec![TokenType::Import]).unwrap();
 
-        let name = self
+        let name = if let Some(identifier) = self
             .tokens
             .consume(vec![TokenType::Identifier(String::new(), Vec::new())])
-            .ok_or(self.error("Expected identifier after 'import' keyword"))?;
+        {
+            identifier
+        } else {
+            self.error("Expected identifier after 'import' keyword");
+            return Statement::Invalid;
+        };
 
-        self.tokens
-            .consume(vec![TokenType::Semicolon])
-            .ok_or(self.error("Expected ';' at the end of an import statement"))?;
-
-        Ok(Statement::Import { name })
+        if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+            self.error_sync("Expected ';' at the end of an import statement");
+            Statement::Invalid
+        } else {
+            Statement::Import { name }
+        }
     }
 
-    pub fn conditional_statement(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::If])
-            .ok_or(self.error("Expected 'if' keyword"))?;
+    pub fn conditional_statement(&mut self) -> Statement {
+        if self.tokens.consume(vec![TokenType::If]).is_none() {
+            self.error_sync("Expected 'if' keyword");
+            return Statement::Invalid;
+        }
 
-        let condition = self.expression(false)?;
-        let if_true = Box::new(self.block()?);
+        let condition = if let Some(expr) = self.expression(false).ok() {
+            expr
+        } else {
+            self.synchronize();
+            return Statement::Invalid;
+        };
+
+        let if_true = Box::new(self.block());
 
         let if_false = if self
             .tokens
             .peek()
-            .map(|t| t.token_type == TokenType::Else)
-            .unwrap_or(false)
+            .map_or(false, |t| t.token_type == TokenType::Else)
         {
             self.tokens.next();
             Some(Box::new(match self.tokens.peek().map(|t| &t.token_type) {
                 Some(TokenType::LeftBrace) => self.block(),
                 Some(TokenType::If) => self.conditional_statement(),
-                _ => Err(self.error("Expected a block or 'if' statement after 'else'")),
-            }?))
+                _ => {
+                    self.error_sync("Expected a block or 'if' statement after 'else'");
+                    return Statement::Invalid;
+                }
+            }))
         } else {
             None
         };
 
-        Ok(Statement::Conditional {
+        Statement::Conditional {
             condition,
             if_true,
             if_false,
-        })
+        }
     }
 
-    pub fn loop_statement(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::While])
-            .ok_or(self.error("Expected 'while' keyword"))?;
+    pub fn loop_statement(&mut self) -> Statement {
+        if self.tokens.consume(vec![TokenType::While]).is_none() {
+            unreachable!();
+        }
 
-        let condition = self.expression(false)?;
-        let body = Box::new(self.block()?);
-        Ok(Statement::Loop { condition, body })
+        let condition = if let Some(expr) = self.expression(false).ok() {
+            expr
+        } else {
+            self.synchronize();
+            return Statement::Invalid;
+        };
+
+        let body = Box::new(self.block());
+        Statement::Loop { condition, body }
     }
 
-    pub fn block(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::LeftBrace])
-            .ok_or(self.error("Expected '{' at the start of the block"))?;
+    pub fn block(&mut self) -> Statement {
+        if self.tokens.consume(vec![TokenType::LeftBrace]).is_none() {
+            self.error_sync("Expected '{' at the start of the block");
+            return Statement::Invalid;
+        }
 
         let mut statements = Vec::new();
         while !self
@@ -285,57 +370,61 @@ impl Parser {
             .map(|t| t.token_type == TokenType::RightBrace)
             .unwrap_or(true)
         {
-            statements.push(self.statement()?);
+            statements.push(self.statement());
         }
 
-        self.tokens
-            .consume(vec![TokenType::RightBrace])
-            .ok_or(self.error("Expected '}' at the end of the block"))?;
+        if self.tokens.consume(vec![TokenType::RightBrace]).is_none() {
+            self.error_sync("Expected '}' at the end of the block");
+            return Statement::Invalid;
+        }
 
-        Ok(Statement::Block { statements })
+        Statement::Block { statements }
     }
 
-    pub fn function_definition(&mut self) -> Result<Statement, ParserError> {
-        self.tokens
-            .consume(vec![TokenType::Func])
-            .ok_or(self.error("Expected 'func' keyword at the start of function definition"))?;
+    pub fn function_definition(&mut self) -> Statement {
+        if self.tokens.consume(vec![TokenType::Func]).is_none() {
+            unreachable!();
+        }
 
         if let Some(Token {
             token_type: TokenType::Identifier(name, parameters),
             ..
         }) = self.tokens.next()
         {
-            let body = Box::new(self.block()?);
-            Ok(Statement::FunctionDefinition {
+            let body = Box::new(self.block());
+            Statement::FunctionDefinition {
                 name,
                 parameters,
                 body,
                 export: false,
-            })
+            }
         } else {
-            Err(self.error("Expected an function signature after `func` keyword"))
+            self.error_sync("Expected an function signature after `func` keyword");
+            Statement::Invalid
         }
     }
 
-    pub fn return_statement(&mut self) -> Result<Statement, ParserError> {
+    pub fn return_statement(&mut self) -> Statement {
         self.tokens.consume(vec![TokenType::Return]).unwrap();
 
         if let Some(..) = self.tokens.consume(vec![TokenType::Semicolon]) {
-            Ok(Statement::Return { expression: None })
+            Statement::Return { expression: None }
+        } else if let Some(expression) = self.expression(true).ok() {
+            if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+                self.error_sync("Expected ';' at the end of return statement");
+                Statement::Invalid
+            } else {
+                Statement::Return {
+                    expression: Some(expression),
+                }
+            }
         } else {
-            let expression = self.expression(true)?;
-
-            self.tokens
-                .consume(vec![TokenType::Semicolon])
-                .ok_or(self.error("Expected ';' at the end of return statement"))?;
-
-            Ok(Statement::Return {
-                expression: Some(expression),
-            })
+            self.synchronize();
+            Statement::Invalid
         }
     }
 
-    pub fn struct_definition(&mut self) -> Result<Statement, ParserError> {
+    pub fn struct_definition(&mut self) -> Statement {
         self.tokens.consume(vec![TokenType::Struct]).unwrap();
 
         if let Some(Token {
@@ -343,45 +432,49 @@ impl Parser {
             ..
         }) = self.tokens.next()
         {
-            self.tokens
-                .consume(vec![TokenType::Semicolon])
-                .ok_or(self.error("Expected ';' at the end of return statement"))?;
-
-            Ok(Statement::StructDefinition {
-                struct_type,
-                fields,
-                export: false,
-            })
+            if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+                self.error_sync("Expected ';' at the end of return statement");
+                Statement::Invalid
+            } else {
+                Statement::StructDefinition {
+                    struct_type,
+                    fields,
+                    export: false,
+                }
+            }
         } else {
-            Err(self.error("Expected a struct definition after `struct` keyword"))
+            self.error("Expected a struct definition after `struct` keyword");
+            Statement::Invalid
         }
     }
 
-    pub fn break_statement(&mut self) -> Result<Statement, ParserError> {
+    pub fn break_statement(&mut self) -> Statement {
         self.tokens.consume(vec![TokenType::Break]).unwrap();
 
-        self.tokens
-            .consume(vec![TokenType::Semicolon])
-            .ok_or(self.error("Expected ';' after 'break'"))?;
-
-        Ok(Statement::Break)
+        if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+            self.error("Expected ';' after 'break'");
+            Statement::Invalid
+        } else {
+            Statement::Break
+        }
     }
 
-    pub fn continue_statement(&mut self) -> Result<Statement, ParserError> {
+    pub fn continue_statement(&mut self) -> Statement {
         self.tokens.consume(vec![TokenType::Continue]).unwrap();
 
-        self.tokens
-            .consume(vec![TokenType::Semicolon])
-            .ok_or(self.error("Expected ';' after 'continue'"))?;
-
-        Ok(Statement::Continue)
+        if self.tokens.consume(vec![TokenType::Semicolon]).is_none() {
+            self.error("Expected ';' after 'continue'");
+            Statement::Invalid
+        } else {
+            Statement::Continue
+        }
     }
 
-    fn expression(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn expression(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         self.assignment(allow_bare_structs)
     }
 
-    fn assignment(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn assignment(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let lvalue = self.logic_or(allow_bare_structs)?;
 
         if let Some(..) = self.tokens.consume(vec![TokenType::Assign]) {
@@ -395,7 +488,7 @@ impl Parser {
         }
     }
 
-    fn logic_or(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn logic_or(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expr = self.logic_and(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![TokenType::Or]) {
@@ -410,7 +503,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn logic_and(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn logic_and(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expr = self.equality(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![TokenType::And]) {
@@ -425,7 +518,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn equality(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn equality(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expr = self.comparison(allow_bare_structs)?;
 
         while let Some(operator) = self
@@ -443,7 +536,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn comparison(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn comparison(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expr = self.term(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![
@@ -463,7 +556,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn term(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn term(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expr = self.factor(allow_bare_structs)?;
 
         while let Some(operator) = self.tokens.consume(vec![TokenType::Plus, TokenType::Minus]) {
@@ -478,7 +571,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn factor(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn factor(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expr = self.unary(allow_bare_structs)?;
 
         while let Some(operator) =
@@ -496,7 +589,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn unary(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn unary(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         if let Some(operator) = self.tokens.consume(vec![TokenType::Minus, TokenType::Not]) {
             Ok(Expression::UnaryOp {
                 right: Box::new(self.postfix(allow_bare_structs)?),
@@ -507,7 +600,7 @@ impl Parser {
         }
     }
 
-    fn postfix(&mut self, allow_bare_structs: bool) -> Result<Expression, ParserError> {
+    fn postfix(&mut self, allow_bare_structs: bool) -> Result<Expression, ()> {
         let mut expression = if allow_bare_structs {
             self.struct_literal()?
         } else {
@@ -529,9 +622,10 @@ impl Parser {
                             break;
                         }
                     }
-                    self.tokens
-                        .consume(vec![TokenType::RightParen])
-                        .ok_or(self.error("Expected ')' at the end of the parameter list"))?;
+                    if self.tokens.consume(vec![TokenType::RightParen]).is_none() {
+                        self.error_sync("Expected ')' at the end of the parameter list");
+                        return Err(());
+                    }
                     expression = Expression::FunctionCall {
                         callee: Box::new(expression),
                         arguments,
@@ -540,9 +634,10 @@ impl Parser {
                 TokenType::LeftSquare => {
                     self.tokens.next();
                     let index = self.expression(true)?;
-                    self.tokens
-                        .consume(vec![TokenType::RightSquare])
-                        .ok_or(self.error("Expected ']' at the end of the array access"))?;
+                    if self.tokens.consume(vec![TokenType::RightSquare]).is_none() {
+                        self.error_sync("Expected ']' at the end of the array access");
+                        return Err(());
+                    }
                     expression = Expression::ArrayRef {
                         array: Box::new(expression),
                         index: Box::new(index),
@@ -556,11 +651,13 @@ impl Parser {
                     }) = self.tokens.next()
                     {
                         if parameters.len() > 0 {
-                            return Err(self.error("Struct field names cannot be parameterized"));
+                            self.error_sync("Struct field names cannot be parameterized");
+                            return Err(());
                         }
                         name
                     } else {
-                        return Err(self.error("Expected a field name after '.'"));
+                        self.error_sync("Expected a field name after '.'");
+                        return Err(());
                     };
 
                     expression = Expression::StructFieldRef {
@@ -575,7 +672,7 @@ impl Parser {
         Ok(expression)
     }
 
-    fn struct_literal(&mut self) -> Result<Expression, ParserError> {
+    fn struct_literal(&mut self) -> Result<Expression, ()> {
         let expr = self.primary()?;
 
         if let Some(..) = self.tokens.consume(vec![TokenType::LeftBrace]) {
@@ -589,7 +686,8 @@ impl Parser {
             {
                 name
             } else {
-                return Err(self.error("Expected a type name before '{'"));
+                self.error_sync("Expected a type name before '{'");
+                return Err(());
             };
 
             let mut fields = HashMap::new();
@@ -604,29 +702,31 @@ impl Parser {
                 }) = self.tokens.next()
                 {
                     if parameters.len() > 0 {
-                        return Err(self.error("Struct field names cannot be parameterized"));
+                        self.error_sync("Struct field names cannot be parameterized");
+                        return Err(());
                     }
                     name
                 } else {
-                    return Err(self.error("Expected a field name in a struct literal"));
+                    self.error_sync("Expected a field name in a struct literal");
+                    return Err(());
                 };
 
-                self.tokens
-                    .consume(vec![TokenType::Assign])
-                    .ok_or(self.error("Expected ':=' after a field identifier"))?;
+                if self.tokens.consume(vec![TokenType::Assign]).is_none() {
+                    self.error_sync("Expected ':=' after a field identifier");
+                    return Err(());
+                }
 
-                let field_value = self
-                    .expression(true)
-                    .map_err(|_| self.error("Expected a value for a field"))?;
+                let field_value = self.expression(true)?;
 
                 fields.insert(field_name, field_value);
 
                 self.tokens.consume(vec![TokenType::Comma]);
             }
 
-            self.tokens
-                .consume(vec![TokenType::RightBrace])
-                .ok_or(self.error("Expected '}' at the end of a struct literal"))?;
+            if self.tokens.consume(vec![TokenType::RightBrace]).is_none() {
+                self.error_sync("Expected '}' at the end of a struct literal");
+                return Err(());
+            }
 
             Ok(Expression::StructLiteral {
                 struct_type,
@@ -637,7 +737,7 @@ impl Parser {
         }
     }
 
-    fn primary(&mut self) -> Result<Expression, ParserError> {
+    fn primary(&mut self) -> Result<Expression, ()> {
         if let Some(value) = self.tokens.consume(vec![
             TokenType::String(String::new()),
             TokenType::Integer(String::new()),
@@ -654,7 +754,8 @@ impl Parser {
             if let Some(..) = self.tokens.consume(vec![TokenType::RightParen]) {
                 Ok(expr)
             } else {
-                Err(self.error("Expected ')' after expression"))
+                self.error_sync("Expected ')' after expression");
+                Err(())
             }
         } else if let Some(_) = self.tokens.consume(vec![TokenType::LeftSquare]) {
             let mut elements = Vec::new();
@@ -670,10 +771,11 @@ impl Parser {
             }
             self.tokens
                 .consume(vec![TokenType::RightSquare])
-                .ok_or(self.error("Expected ']' at the end of the array literal"))?;
+                .ok_or(self.error_sync("Expected ']' at the end of the array literal"))?;
             Ok(Expression::ArrayLiteral { elements })
         } else {
-            Err(self.error("Expected a primary value"))
+            self.error_sync("Expected a primary value");
+            Err(())
         }
     }
 }

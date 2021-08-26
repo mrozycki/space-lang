@@ -52,6 +52,25 @@ pub struct Token {
     pub column: usize,
 }
 
+impl Token {
+    pub fn is_keyword(&self) -> bool {
+        match self.token_type {
+            TokenType::Func => true,
+            TokenType::Let => true,
+            TokenType::Return => true,
+            TokenType::Break => true,
+            TokenType::Continue => true,
+            TokenType::Export => true,
+            TokenType::Import => true,
+            TokenType::If => true,
+            TokenType::Else => true,
+            TokenType::While => true,
+            TokenType::Struct => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexerError {
     message: String,
