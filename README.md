@@ -1,8 +1,12 @@
 Space (🌌) lang
 ================
 
-Written for [LangJam 0001](https://github.com/langjam/jam0001), in 48 hours,
-based on the theme of "first-class comments".
+Originally written for [LangJam 0001](https://github.com/langjam/jam0001), 
+in 48 hours, based on the theme of "first-class comments".
+
+Since then, there have been changes made to the implementation. If you would
+like to see the code as submitted for the jam, see the 
+[`langjam-submission` branch](https://github.com/mrozycki/space-lang/tree/langjam-submission).
 
 Language overview
 -----------------
