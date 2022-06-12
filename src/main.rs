@@ -4,6 +4,7 @@ mod builtins;
 mod error_reporter;
 mod interpreter;
 mod lexer;
+mod llvm_generator;
 mod parser;
 
 use std::{
@@ -15,6 +16,7 @@ use std::{
 use error_reporter::ConsoleErrorReporter;
 use interpreter::{Exec, Interpreter};
 use lexer::Lexer;
+use llvm_generator::LLVMGenerator;
 use parser::Parser;
 
 fn process(code: &str) {
@@ -29,14 +31,16 @@ fn process(code: &str) {
                 return;
             }
 
-            let mut interpreter = Interpreter::with_ast(&statements);
+            let mut generator = LLVMGenerator::new(&statements);
+            println!("{}", generator.generate());
+            /*let mut interpreter = Interpreter::with_ast(&statements);
             match interpreter.run() {
                 Exec::Err(e) => eprintln!("Interpreter error: {}", e),
                 Exec::Return(_) => eprintln!("return outside of a function"),
                 Exec::Break => eprintln!("break outside of a loop"),
                 Exec::Continue => eprintln!("continue outside of a loop"),
                 Exec::Ok => (),
-            }
+            }*/
         }
         Err(e) => {
             eprintln!("Lexer error: {}", e);
